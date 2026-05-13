@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import "./index.css";
 
 const API_URL =
@@ -101,13 +102,6 @@ async function copyTextToClipboard(text) {
   textarea.select();
   document.execCommand("copy");
   textarea.remove();
-}
-
-function escapeExcelText(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
 }
 
 function getPaginationData(rows, page, pageSize = PAGE_SIZE) {
@@ -648,206 +642,75 @@ function App() {
         );
       });
 
-      const bodyRows = [];
+      const sheetRows = [
+        ["ABLE & CO 원단결제용 불량내역", "", "", "", "", "", "", ""],
+        [`기간: ${paymentStart} ~ ${paymentEnd}`, "", "", "", "", "", "", ""],
+        ["조이", "", "", "삼창", "", "", "미주", ""],
+        ["품목", "수량", "", "품목", "수량", "", "품목", "수량"],
+      ];
 
       for (let i = 0; i < maxRows; i++) {
-        const cells = [];
+        const row = [];
 
         groups.forEach((group, groupIndex) => {
-          const row = rowsByGroup[group][i];
+          const data = rowsByGroup[group][i];
 
-          if (row) {
-            cells.push(`<td class="item-cell">${escapeExcelText(row.품목 || "")}</td>`);
-            cells.push(`<td class="qty-cell">${Number(row.수량 || 0)}</td>`);
+          if (data) {
+            row.push(data.품목 || "");
+            row.push(Number(data.수량 || 0));
           } else {
-            cells.push(`<td class="item-cell"></td>`);
-            cells.push(`<td class="qty-cell"></td>`);
+            row.push("");
+            row.push("");
           }
 
           if (groupIndex < groups.length - 1) {
-            cells.push(`<td class="gap-cell"></td>`);
+            row.push("");
           }
         });
 
-        bodyRows.push(`<tr>${cells.join("")}</tr>`);
+        sheetRows.push(row);
       }
 
-      const totalCells = groups
-        .map((group, groupIndex) => {
-          const cells = [
-            `<td class="total-label">합계</td>`,
-            `<td class="total-qty">${totals[group]}</td>`,
-          ];
+      sheetRows.push([
+        "합계",
+        totals.조이,
+        "",
+        "합계",
+        totals.삼창,
+        "",
+        "합계",
+        totals.미주,
+      ]);
 
-          if (groupIndex < groups.length - 1) {
-            cells.push(`<td class="gap-cell"></td>`);
-          }
+      const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
 
-          return cells.join("");
-        })
-        .join("");
+      worksheet["!merges"] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 1 } },
+        { s: { r: 2, c: 3 }, e: { r: 2, c: 4 } },
+        { s: { r: 2, c: 6 }, e: { r: 2, c: 7 } },
+      ];
 
-      const title = `ABLE & CO 원단결제용 불량내역`;
-      const period = `${paymentStart} ~ ${paymentEnd}`;
+      worksheet["!cols"] = [
+        { wch: 14 },
+        { wch: 6 },
+        { wch: 3 },
+        { wch: 14 },
+        { wch: 6 },
+        { wch: 3 },
+        { wch: 14 },
+        { wch: 6 },
+      ];
 
-      const html = `
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8" />
-<style>
-  body {
-    font-family: Arial, "Malgun Gothic", sans-serif;
-  }
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "원단결제용");
 
-  table {
-    border-collapse: collapse;
-  }
-
-  col.item-col {
-    width: 115px;
-  }
-
-  col.qty-col {
-    width: 48px;
-  }
-
-  col.gap-col {
-    width: 24px;
-  }
-
-  th, td {
-    border: 1px solid #333333;
-    padding: 6px 7px;
-    font-size: 11px;
-    height: 23px;
-    white-space: nowrap;
-  }
-
-  .title {
-    font-size: 17px;
-    font-weight: 700;
-    text-align: center;
-    border: none;
-    padding: 12px;
-    color: #0a2747;
-  }
-
-  .period {
-    font-size: 11px;
-    text-align: center;
-    border: none;
-    padding: 7px;
-    color: #6e542b;
-  }
-
-  .factory-head {
-    background: #0a2747;
-    color: #ffffff;
-    font-size: 13px;
-    font-weight: 700;
-    text-align: center;
-  }
-
-  .subhead {
-    background: #f2eadc;
-    color: #000000;
-    font-weight: 700;
-    text-align: center;
-  }
-
-  .item-cell {
-    text-align: left;
-  }
-
-  .qty-cell {
-    text-align: right;
-  }
-
-  .total-label {
-    background: #f8efe0;
-    color: #0a2747;
-    font-weight: 700;
-    text-align: left;
-  }
-
-  .total-qty {
-    background: #f8efe0;
-    color: #0a2747;
-    font-weight: 700;
-    text-align: right;
-  }
-
-  .gap-cell {
-    border: none;
-    background: #ffffff;
-  }
-</style>
-</head>
-<body>
-<table>
-  <colgroup>
-    <col class="item-col" />
-    <col class="qty-col" />
-    <col class="gap-col" />
-    <col class="item-col" />
-    <col class="qty-col" />
-    <col class="gap-col" />
-    <col class="item-col" />
-    <col class="qty-col" />
-  </colgroup>
-
-  <tr>
-    <td class="title" colspan="8">${escapeExcelText(title)}</td>
-  </tr>
-
-  <tr>
-    <td class="period" colspan="8">기간: ${escapeExcelText(period)}</td>
-  </tr>
-
-  <tr>
-    <th class="factory-head" colspan="2">조이</th>
-    <td class="gap-cell"></td>
-    <th class="factory-head" colspan="2">삼창</th>
-    <td class="gap-cell"></td>
-    <th class="factory-head" colspan="2">미주</th>
-  </tr>
-
-  <tr>
-    <th class="subhead">품목</th>
-    <th class="subhead">수량</th>
-    <td class="gap-cell"></td>
-    <th class="subhead">품목</th>
-    <th class="subhead">수량</th>
-    <td class="gap-cell"></td>
-    <th class="subhead">품목</th>
-    <th class="subhead">수량</th>
-  </tr>
-
-  ${bodyRows.join("")}
-
-  <tr>${totalCells}</tr>
-</table>
-</body>
-</html>
-`;
-
-      const blob = new Blob(["\ufeff", html], {
-        type: "application/vnd.ms-excel;charset=utf-8;",
-      });
-
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
       const safeStart = String(paymentStart || "").replaceAll("-", "");
       const safeEnd = String(paymentEnd || "").replaceAll("-", "");
+      const fileName = `ABLE_CO_원단결제용_불량내역_${safeStart}_${safeEnd}.xlsx`;
 
-      link.href = url;
-      link.download = `ABLE_CO_원단결제용_불량내역_${safeStart}_${safeEnd}.xls`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
+      XLSX.writeFile(workbook, fileName);
       showToast("원단결제용 엑셀 다운로드 완료");
     } catch (error) {
       console.error(error);
@@ -1922,6 +1785,8 @@ function InputPage({
 
 function AutocompleteInput({ value, onChange, options, inputRef, onEnter }) {
   const [open, setOpen] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(0);
+  const listRef = useRef(null);
 
   const filtered = useMemo(() => {
     const keyword = String(value || "").trim();
@@ -1933,6 +1798,30 @@ function AutocompleteInput({ value, onChange, options, inputRef, onEnter }) {
     return options.filter((item) => item.includes(keyword)).slice(0, 30);
   }, [value, options]);
 
+  useEffect(() => {
+    setHighlightIndex(0);
+  }, [value, filtered.length]);
+
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+
+    const activeEl = listRef.current.querySelector(`[data-index="${highlightIndex}"]`);
+
+    if (activeEl) {
+      activeEl.scrollIntoView({
+        block: "nearest",
+      });
+    }
+  }, [highlightIndex, open]);
+
+  function selectItem(item) {
+    onChange(item);
+    setOpen(false);
+    setTimeout(() => {
+      onEnter?.();
+    }, 0);
+  }
+
   return (
     <div className="auto">
       <input
@@ -1941,12 +1830,42 @@ function AutocompleteInput({ value, onChange, options, inputRef, onEnter }) {
         onChange={(e) => {
           onChange(e.target.value);
           setOpen(true);
+          setHighlightIndex(0);
         }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         onKeyDown={(e) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setOpen(true);
+            setHighlightIndex((prev) => {
+              if (filtered.length === 0) return 0;
+              return Math.min(prev + 1, filtered.length - 1);
+            });
+            return;
+          }
+
+          if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setOpen(true);
+            setHighlightIndex((prev) => Math.max(prev - 1, 0));
+            return;
+          }
+
+          if (e.key === "Escape") {
+            e.preventDefault();
+            setOpen(false);
+            return;
+          }
+
           if (e.key === "Enter") {
             e.preventDefault();
+
+            if (open && filtered.length > 0) {
+              selectItem(filtered[highlightIndex] || filtered[0]);
+              return;
+            }
+
             setOpen(false);
             onEnter?.();
           }
@@ -1955,19 +1874,16 @@ function AutocompleteInput({ value, onChange, options, inputRef, onEnter }) {
       />
 
       {open && filtered.length > 0 && (
-        <div className="auto-list">
-          {filtered.map((item) => (
+        <div className="auto-list" ref={listRef}>
+          {filtered.map((item, index) => (
             <button
               key={item}
               type="button"
+              data-index={index}
+              className={index === highlightIndex ? "auto-active" : ""}
+              onMouseEnter={() => setHighlightIndex(index)}
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                onChange(item);
-                setOpen(false);
-                setTimeout(() => {
-                  onEnter?.();
-                }, 0);
-              }}
+              onClick={() => selectItem(item)}
             >
               {item}
             </button>

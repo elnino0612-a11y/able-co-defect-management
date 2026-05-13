@@ -1313,3 +1313,8 @@ tbody tr:hover td {
     page-break-inside: avoid !important;
   }
 }
+.auto-list button.auto-active {
+  background: #f4ead9;
+  color: #0a2747;
+  font-weight: 900;
+}
