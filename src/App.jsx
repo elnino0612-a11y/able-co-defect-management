@@ -1839,15 +1839,15 @@ function WeeklyPage({
       </div>
 
       <div className="panel print-panel">
-        <div className="print-title">
-          <h3>ABLE & CO 공장별 불량내역</h3>
-          <p>
-            기간: {formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)} /{" "}
-            {isAllFactoryPrint
-              ? `전체 공장 ${weeklyReport.sections.length.toLocaleString()}곳 / 총 ${totalPrintQty.toLocaleString()}장`
-              : `공장명: ${factory} / 총 ${totalPrintQty.toLocaleString()}장`}
-          </p>
-        </div>
+        {!isAllFactoryPrint && (
+          <div className="print-title">
+            <h3>ABLE & CO 공장별 불량내역</h3>
+            <p>
+              기간: {formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)} / 공장명:{" "}
+              {factory} / 총 {totalPrintQty.toLocaleString()}장
+            </p>
+          </div>
+        )}
 
         {weeklyReport.sections.length === 0 ? (
           <div className="empty-cell">조회된 공장별 불량내역 데이터가 없습니다.</div>
@@ -1864,7 +1864,7 @@ function WeeklyPage({
                   marginBottom: index === weeklyReport.sections.length - 1 ? 0 : 34,
                 }}
               >
-                <div className="print-title" style={{ marginTop: index === 0 ? 0 : 8 }}>
+                <div className="print-title" style={{ marginTop: 0 }}>
                   <h3>{section.factoryName}</h3>
                   <p>
                     기간: {formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)} / 합계{" "}
