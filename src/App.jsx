@@ -653,26 +653,38 @@ function App() {
       for (let i = 0; i < maxRows; i++) {
         const cells = [];
 
-        groups.forEach((group) => {
+        groups.forEach((group, groupIndex) => {
           const row = rowsByGroup[group][i];
 
           if (row) {
-            cells.push(`<td>${escapeExcelText(row.품목 || "")}</td>`);
-            cells.push(`<td style="text-align:right;">${Number(row.수량 || 0)}</td>`);
+            cells.push(`<td class="item-cell">${escapeExcelText(row.품목 || "")}</td>`);
+            cells.push(`<td class="qty-cell">${Number(row.수량 || 0)}</td>`);
           } else {
-            cells.push("<td></td>");
-            cells.push("<td></td>");
+            cells.push(`<td class="item-cell"></td>`);
+            cells.push(`<td class="qty-cell"></td>`);
+          }
+
+          if (groupIndex < groups.length - 1) {
+            cells.push(`<td class="gap-cell"></td>`);
           }
         });
 
         bodyRows.push(`<tr>${cells.join("")}</tr>`);
       }
 
-      const totalRow = groups
-        .map(
-          (group) =>
-            `<td style="font-weight:700;background:#f4ead9;">합계</td><td style="font-weight:700;text-align:right;background:#f4ead9;">${totals[group]}</td>`
-        )
+      const totalCells = groups
+        .map((group, groupIndex) => {
+          const cells = [
+            `<td class="total-label">합계</td>`,
+            `<td class="total-qty">${totals[group]}</td>`,
+          ];
+
+          if (groupIndex < groups.length - 1) {
+            cells.push(`<td class="gap-cell"></td>`);
+          }
+
+          return cells.join("");
+        })
         .join("");
 
       const title = `ABLE & CO 원단결제용 불량내역`;
@@ -687,64 +699,134 @@ function App() {
   body {
     font-family: Arial, "Malgun Gothic", sans-serif;
   }
+
   table {
     border-collapse: collapse;
-    width: 100%;
   }
+
+  col.item-col {
+    width: 115px;
+  }
+
+  col.qty-col {
+    width: 48px;
+  }
+
+  col.gap-col {
+    width: 24px;
+  }
+
   th, td {
     border: 1px solid #333333;
-    padding: 8px;
-    font-size: 12px;
+    padding: 6px 7px;
+    font-size: 11px;
+    height: 23px;
     white-space: nowrap;
   }
-  th {
-    background: #0a2747;
-    color: #ffffff;
-    font-weight: 700;
-    text-align: center;
-  }
-  .subhead {
-    background: #f2eadc;
-    color: #000000;
-  }
+
   .title {
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 700;
     text-align: center;
     border: none;
     padding: 12px;
+    color: #0a2747;
   }
+
   .period {
-    font-size: 12px;
+    font-size: 11px;
     text-align: center;
     border: none;
-    padding: 8px;
+    padding: 7px;
+    color: #6e542b;
+  }
+
+  .factory-head {
+    background: #0a2747;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .subhead {
+    background: #f2eadc;
+    color: #000000;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .item-cell {
+    text-align: left;
+  }
+
+  .qty-cell {
+    text-align: right;
+  }
+
+  .total-label {
+    background: #f8efe0;
+    color: #0a2747;
+    font-weight: 700;
+    text-align: left;
+  }
+
+  .total-qty {
+    background: #f8efe0;
+    color: #0a2747;
+    font-weight: 700;
+    text-align: right;
+  }
+
+  .gap-cell {
+    border: none;
+    background: #ffffff;
   }
 </style>
 </head>
 <body>
 <table>
+  <colgroup>
+    <col class="item-col" />
+    <col class="qty-col" />
+    <col class="gap-col" />
+    <col class="item-col" />
+    <col class="qty-col" />
+    <col class="gap-col" />
+    <col class="item-col" />
+    <col class="qty-col" />
+  </colgroup>
+
   <tr>
-    <td class="title" colspan="6">${escapeExcelText(title)}</td>
+    <td class="title" colspan="8">${escapeExcelText(title)}</td>
   </tr>
+
   <tr>
-    <td class="period" colspan="6">기간: ${escapeExcelText(period)}</td>
+    <td class="period" colspan="8">기간: ${escapeExcelText(period)}</td>
   </tr>
+
   <tr>
-    <th colspan="2">조이</th>
-    <th colspan="2">삼창</th>
-    <th colspan="2">미주</th>
+    <th class="factory-head" colspan="2">조이</th>
+    <td class="gap-cell"></td>
+    <th class="factory-head" colspan="2">삼창</th>
+    <td class="gap-cell"></td>
+    <th class="factory-head" colspan="2">미주</th>
   </tr>
+
   <tr>
     <th class="subhead">품목</th>
     <th class="subhead">수량</th>
+    <td class="gap-cell"></td>
     <th class="subhead">품목</th>
     <th class="subhead">수량</th>
+    <td class="gap-cell"></td>
     <th class="subhead">품목</th>
     <th class="subhead">수량</th>
   </tr>
+
   ${bodyRows.join("")}
-  <tr>${totalRow}</tr>
+
+  <tr>${totalCells}</tr>
 </table>
 </body>
 </html>
