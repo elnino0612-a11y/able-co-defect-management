@@ -46,6 +46,7 @@ function parseAnyDate(value) {
       Number(match[5] || 0),
       Number(match[6] || 0)
     );
+
     if (!Number.isNaN(date.getTime())) return date;
   }
 
@@ -1542,10 +1543,36 @@ function FactorySectionSummary({
       });
   }, [factoryOptions, periodSummary, selectedFactory]);
 
+  const topItem = useMemo(() => {
+    const itemMap = {};
+
+    factorySections.forEach((section) => {
+      section.rows.forEach((row) => {
+        const itemName = row.품목 || "-";
+        const qty = Number(row.수량 || 0);
+
+        if (!itemMap[itemName]) {
+          itemMap[itemName] = 0;
+        }
+
+        itemMap[itemName] += qty;
+      });
+    });
+
+    const sortedItems = Object.entries(itemMap)
+      .map(([itemName, qty]) => ({
+        itemName,
+        qty,
+      }))
+      .filter((item) => item.qty > 0)
+      .sort((a, b) => b.qty - a.qty);
+
+    return sortedItems[0] || null;
+  }, [factorySections]);
+
   const totalQty = factorySections.reduce((sum, section) => sum + section.total, 0);
   const activeFactoryCount = factorySections.filter((section) => section.total > 0).length;
   const totalFactoryCount = factorySections.length;
-  const topFactory = factorySections.find((section) => section.total > 0);
 
   return (
     <>
@@ -1553,7 +1580,10 @@ function FactorySectionSummary({
         <KpiCard title="기간 내 전체 불량" value={totalQty} />
         <KpiTextCard title="표시 공장 수" value={`${totalFactoryCount.toLocaleString()}곳`} />
         <KpiTextCard title="불량 발생 공장" value={`${activeFactoryCount.toLocaleString()}곳`} />
-        <KpiTextCard title="최다 불량 공장" value={topFactory ? topFactory.factoryName : "-"} />
+        <KpiTextCard
+          title="최다 불량 품목"
+          value={topItem ? `${topItem.itemName} ${topItem.qty.toLocaleString()}장` : "-"}
+        />
       </div>
 
       <div className="panel">
