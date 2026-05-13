@@ -10,7 +10,7 @@ const PAGE_SIZE = 20;
 const PUBLIC_MENU = [
   { key: "dashboard", label: "대시보드" },
   { key: "total", label: "전체 불량현황" },
-  { key: "weekly", label: "공장별 주간보고서" },
+  { key: "weekly", label: "공장별 불량내역" },
   { key: "payment", label: "원단결제용 불량내역" },
 ];
 
@@ -737,7 +737,16 @@ function App() {
 
       const sheetRows = [
         ["ABLE & CO 원단결제용 불량내역", "", "", "", "", "", "", ""],
-        [`기간: ${formatKoreanDate(paymentStart)} ~ ${formatKoreanDate(paymentEnd)}`, "", "", "", "", "", "", ""],
+        [
+          `기간: ${formatKoreanDate(paymentStart)} ~ ${formatKoreanDate(paymentEnd)}`,
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+        ],
         ["조이", "", "", "삼창", "", "", "미주", ""],
         ["품목", "수량", "", "품목", "수량", "", "품목", "수량"],
       ];
@@ -1127,7 +1136,6 @@ function App() {
             setKeyword={setKeyword}
             factoryOptions={factoryOptions}
             onSearch={handleDashboardSearch}
-            periodRows={periodRows}
             periodSummary={periodSummary}
           />
         )}
@@ -1410,37 +1418,261 @@ function ItemRankTable({ title, rows }) {
   );
 }
 
-function TotalPage(props) {
+function TotalPage({
+  startDate,
+  endDate,
+  setStartDate,
+  setEndDate,
+  factory,
+  setFactory,
+  keyword,
+  setKeyword,
+  factoryOptions,
+  onSearch,
+  periodSummary,
+}) {
   return (
     <section className="page">
-      <PageTitle title="전체 불량현황" subtitle="기간별 / 공장별 / 품목별 조회" />
-      <SearchBox {...props} />
+      <PageTitle title="전체 불량현황" subtitle="실제공장 기준 전체 불량 품목 수량 조회" />
 
-      <div className="panel">
-        <div className="panel-head">
-          <h3>품목별 합계</h3>
-        </div>
-        <SimpleTable
-          columns={["실제공장", "품목", "합계"]}
-          rows={props.periodSummary}
-          suffixMap={{ 합계: "장" }}
-        />
+      <SearchBox
+        startDate={startDate}
+        endDate={endDate}
+        setStartDate={setStartDate}
+        setEndDate={setEndDate}
+        factory={factory}
+        setFactory={setFactory}
+        keyword={keyword}
+        setKeyword={setKeyword}
+        factoryOptions={factoryOptions}
+        onSearch={onSearch}
+      />
+
+      <FactorySectionSummary
+        startDate={startDate}
+        endDate={endDate}
+        selectedFactory={factory}
+        factoryOptions={factoryOptions}
+        periodSummary={periodSummary}
+      />
+    </section>
+  );
+}
+
+function FactorySectionSummary({
+  startDate,
+  endDate,
+  selectedFactory,
+  factoryOptions,
+  periodSummary,
+}) {
+  const factorySections = useMemo(() => {
+    const actualFactories = factoryOptions.filter((name) => name && name !== "전체");
+
+    const targetFactories =
+      selectedFactory && selectedFactory !== "전체" ? [selectedFactory] : actualFactories;
+
+    const grouped = {};
+
+    targetFactories.forEach((factoryName) => {
+      grouped[factoryName] = [];
+    });
+
+    (periodSummary || []).forEach((row) => {
+      const factoryName = row.실제공장 || "미분류";
+      const itemName = row.품목 || "-";
+      const qty = Number(row.합계 || 0);
+
+      if (selectedFactory !== "전체" && factoryName !== selectedFactory) return;
+
+      if (!grouped[factoryName]) grouped[factoryName] = [];
+
+      grouped[factoryName].push({
+        품목: itemName,
+        수량: qty,
+      });
+    });
+
+    return Object.entries(grouped)
+      .map(([factoryName, rows]) => {
+        const sortedRows = rows
+          .filter((row) => Number(row.수량 || 0) > 0)
+          .sort((a, b) => Number(b.수량 || 0) - Number(a.수량 || 0));
+
+        const total = sortedRows.reduce((sum, row) => sum + Number(row.수량 || 0), 0);
+
+        return {
+          factoryName,
+          rows: sortedRows,
+          total,
+        };
+      })
+      .sort((a, b) => {
+        if (selectedFactory !== "전체") return 0;
+        if (b.total !== a.total) return b.total - a.total;
+        return a.factoryName.localeCompare(b.factoryName, "ko");
+      });
+  }, [factoryOptions, periodSummary, selectedFactory]);
+
+  const totalQty = factorySections.reduce((sum, section) => sum + section.total, 0);
+  const activeFactoryCount = factorySections.filter((section) => section.total > 0).length;
+  const totalFactoryCount = factorySections.length;
+  const topFactory = factorySections.find((section) => section.total > 0);
+
+  return (
+    <>
+      <div className="kpi-grid">
+        <KpiCard title="기간 내 전체 불량" value={totalQty} />
+        <KpiTextCard title="표시 공장 수" value={`${totalFactoryCount.toLocaleString()}곳`} />
+        <KpiTextCard title="불량 발생 공장" value={`${activeFactoryCount.toLocaleString()}곳`} />
+        <KpiTextCard title="최다 불량 공장" value={topFactory ? topFactory.factoryName : "-"} />
       </div>
 
       <div className="panel">
         <div className="panel-head">
           <div>
-            <h3>입력 원본 내역</h3>
-            <p>20개씩 페이지로 표시됩니다.</p>
+            <h3>실제공장별 불량 품목 수량</h3>
+            <p>
+              기간: {formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)} / 수량 많은 순서로
+              표시
+            </p>
           </div>
         </div>
-        <PaginatedSimpleTable
-          columns={["등록번호", "접수일", "실제공장", "결제그룹", "품목", "수량", "등록일시"]}
-          rows={props.periodRows}
-          suffixMap={{ 수량: "장" }}
-        />
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(310px, 100%), 1fr))",
+            gap: 18,
+            width: "100%",
+          }}
+        >
+          {factorySections.length === 0 ? (
+            <div className="empty-panel">조회된 공장별 불량 내역이 없습니다.</div>
+          ) : (
+            factorySections.map((section) => (
+              <FactorySummaryCard
+                key={section.factoryName}
+                factoryName={section.factoryName}
+                rows={section.rows}
+                total={section.total}
+              />
+            ))
+          )}
+        </div>
       </div>
-    </section>
+    </>
+  );
+}
+
+function KpiTextCard({ title, value }) {
+  return (
+    <div className="kpi-card">
+      <p>{title}</p>
+      <strong style={{ fontSize: "clamp(28px, 3vw, 42px)" }}>{value}</strong>
+    </div>
+  );
+}
+
+function FactorySummaryCard({ factoryName, rows, total }) {
+  return (
+    <div
+      style={{
+        background: "#fffdf8",
+        border: "1px solid #eadfcd",
+        borderRadius: 18,
+        overflow: "hidden",
+        boxShadow: "0 14px 35px rgba(20, 24, 31, 0.08)",
+        minWidth: 0,
+      }}
+    >
+      <div
+        style={{
+          padding: "18px 20px",
+          background: "#fff8ec",
+          borderBottom: "1px solid #eadfcd",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <h3
+          style={{
+            margin: 0,
+            fontFamily: '"Noto Serif KR", serif',
+            fontSize: 23,
+            color: "#0a2747",
+            fontWeight: 900,
+          }}
+        >
+          {factoryName}
+        </h3>
+
+        <div
+          style={{
+            padding: "7px 13px",
+            borderRadius: 999,
+            background: "#0a2747",
+            color: "#f7e0b8",
+            fontWeight: 900,
+            fontSize: 14,
+            whiteSpace: "nowrap",
+          }}
+        >
+          합계 {Number(total || 0).toLocaleString()}장
+        </div>
+      </div>
+
+      <div style={{ padding: 18 }}>
+        {rows.length === 0 ? (
+          <div
+            style={{
+              padding: "34px 12px",
+              textAlign: "center",
+              color: "#8e8375",
+              fontWeight: 800,
+              background: "#fbf7ef",
+              borderRadius: 12,
+            }}
+          >
+            조회된 불량 품목이 없습니다.
+          </div>
+        ) : (
+          <div className="table-wrap" style={{ borderRadius: 10 }}>
+            <table style={{ minWidth: 260 }}>
+              <thead>
+                <tr>
+                  <th>품목</th>
+                  <th>수량</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, index) => (
+                  <tr key={`${factoryName}-${row.품목}-${index}`}>
+                    <td style={{ textAlign: "left", fontWeight: 800 }}>{row.품목}</td>
+                    <td style={{ fontWeight: 900, color: "#0a2747" }}>
+                      {Number(row.수량 || 0).toLocaleString()}장
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <p
+          style={{
+            margin: "12px 0 0",
+            color: "#8c8172",
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
+          품목별 합계 기준 / 수량 많은 순서
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -1488,7 +1720,7 @@ function WeeklyPage({
 
   return (
     <section className="page weekly-page">
-      <PageTitle title="공장별 주간보고서" subtitle="품목별 날짜 수량 인쇄용 보고서" />
+      <PageTitle title="공장별 불량내역" subtitle="품목별 날짜 수량 인쇄용 보고서" />
 
       <div className="search-card compact no-print">
         <div className="field">
@@ -1523,7 +1755,7 @@ function WeeklyPage({
 
       <div className="panel print-panel">
         <div className="print-title">
-          <h3>ABLE & CO 불량 보고서</h3>
+          <h3>ABLE & CO 공장별 불량내역</h3>
           <p>
             공장명: {factory} / 기간: {formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)}
           </p>
@@ -1553,7 +1785,7 @@ function WeeklyPivotTable({ dateColumns, rows }) {
           {rows.length === 0 ? (
             <tr>
               <td colSpan={dateColumns.length + 2} className="empty-cell">
-                조회된 주간 보고서 데이터가 없습니다.
+                조회된 공장별 불량내역 데이터가 없습니다.
               </td>
             </tr>
           ) : (
