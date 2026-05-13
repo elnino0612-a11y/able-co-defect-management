@@ -556,6 +556,8 @@ function App() {
         return;
       }
 
+      const totalQty = rows.reduce((sum, row) => sum + Number(row.수량 || 0), 0);
+
       const header = ["품목", "수량"].join("\t");
       const body = rows
         .map((row) => {
@@ -565,10 +567,51 @@ function App() {
         })
         .join("\n");
 
-      await copyTextToClipboard(`${header}\n${body}`);
+      const totalLine = ["합계", totalQty].join("\t");
+
+      await copyTextToClipboard(`${header}\n${body}\n${totalLine}`);
       showToast(`${groupName} 원단결제용 불량내역 복사 완료`);
     } catch {
       showToast("복사에 실패했습니다.");
+    }
+  }
+
+  async function handleCopyAllPaymentRows() {
+    try {
+      const groups = ["조이", "미주", "삼창"];
+      const lines = [["공장", "품목", "수량"].join("\t")];
+
+      let allTotal = 0;
+      let hasData = false;
+
+      groups.forEach((group) => {
+        const rows = paymentGrouped[group] || [];
+        const groupTotal = rows.reduce((sum, row) => sum + Number(row.수량 || 0), 0);
+
+        if (rows.length > 0) {
+          hasData = true;
+
+          rows.forEach((row) => {
+            lines.push([group, row.품목 || "", Number(row.수량 || 0)].join("\t"));
+          });
+
+          lines.push([`${group} 합계`, "", groupTotal].join("\t"));
+        }
+
+        allTotal += groupTotal;
+      });
+
+      if (!hasData) {
+        showToast("전체 복사할 데이터가 없습니다.");
+        return;
+      }
+
+      lines.push(["전체 합계", "", allTotal].join("\t"));
+
+      await copyTextToClipboard(lines.join("\n"));
+      showToast("조이 / 미주 / 삼창 전체 불량내역 복사 완료");
+    } catch {
+      showToast("전체 복사에 실패했습니다.");
     }
   }
 
@@ -918,6 +961,7 @@ function App() {
             paymentGrouped={paymentGrouped}
             onSearch={handlePaymentSearch}
             onCopyGroup={handleCopyPaymentRows}
+            onCopyAllGroups={handleCopyAllPaymentRows}
           />
         )}
 
@@ -1346,8 +1390,19 @@ function PaymentPage({
   paymentGrouped,
   onSearch,
   onCopyGroup,
+  onCopyAllGroups,
 }) {
   const groups = paymentGroup === "전체" ? ["조이", "미주", "삼창"] : [paymentGroup];
+
+  const getGroupTotal = (group) => {
+    const rows = paymentGrouped[group] || [];
+    return rows.reduce((sum, row) => sum + Number(row.수량 || 0), 0);
+  };
+
+  const allTotal = ["조이", "미주", "삼창"].reduce(
+    (sum, group) => sum + getGroupTotal(group),
+    0
+  );
 
   return (
     <section className="page">
@@ -1386,6 +1441,28 @@ function PaymentPage({
         <button className="search-btn" onClick={onSearch}>
           조회
         </button>
+
+        <button className="line-btn" onClick={onCopyAllGroups} type="button">
+          전체 복사
+        </button>
+      </div>
+
+      <div className="panel">
+        <div className="panel-head">
+          <div>
+            <h3>원단결제용 합계</h3>
+            <p>
+              기간: {paymentStart} ~ {paymentEnd}
+            </p>
+          </div>
+        </div>
+
+        <div className="kpi-grid">
+          <KpiCard title="조이 합계" value={getGroupTotal("조이")} />
+          <KpiCard title="미주 합계" value={getGroupTotal("미주")} />
+          <KpiCard title="삼창 합계" value={getGroupTotal("삼창")} />
+          <KpiCard title="전체 합계" value={allTotal} />
+        </div>
       </div>
 
       <div className="payment-grid">
@@ -1395,13 +1472,15 @@ function PaymentPage({
             수량: row.수량,
           }));
 
+          const groupTotal = getGroupTotal(group);
+
           return (
             <div className="panel" key={group}>
               <div className="panel-head">
                 <div>
                   <h3>{group}</h3>
                   <p>
-                    {paymentStart} ~ {paymentEnd}
+                    {paymentStart} ~ {paymentEnd} / 합계 {groupTotal.toLocaleString()}장
                   </p>
                 </div>
 
@@ -1411,6 +1490,24 @@ function PaymentPage({
               </div>
 
               <SimpleTable columns={["품목", "수량"]} rows={rows} suffixMap={{ 수량: "장" }} />
+
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: "14px 16px",
+                  borderRadius: 12,
+                  background: "#f8efe0",
+                  border: "1px solid #ead8b9",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  fontWeight: 900,
+                  color: "#0a2747",
+                }}
+              >
+                <span>{group} 합계</span>
+                <strong>{groupTotal.toLocaleString()}장</strong>
+              </div>
             </div>
           );
         })}
