@@ -490,7 +490,7 @@ function App() {
     }
   }
 
-  async function handleUpdateItemFactory({ itemName, newFactory, memo }) {
+  async function handleUpdateItemFactory({ oldItemName, newItemName, newFactory, memo }) {
     try {
       if (!isAdmin || !adminPassword) {
         showToast("관리자 로그인 후 이용 가능합니다.");
@@ -502,17 +502,56 @@ function App() {
       const result = await callApi({
         action: "updateItemFactory",
         password: adminPassword,
-        itemName,
+        oldItemName,
+        newItemName,
         newFactory,
         memo,
       });
 
       if (!result.ok) {
-        showToast(result.message || "공장 수정 실패");
+        showToast(result.message || "품목/공장 수정 실패");
         return;
       }
 
-      showToast(result.message || "공장 수정 완료");
+      if (result.dashboardCache) {
+        applyDashboardCache(result.dashboardCache);
+      }
+
+      showToast(result.message || "품목/공장 수정 완료");
+      await refreshMasterData();
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDeleteItemFactory({ itemName, reason }) {
+    try {
+      if (!isAdmin || !adminPassword) {
+        showToast("관리자 로그인 후 이용 가능합니다.");
+        return;
+      }
+
+      setLoading(true);
+
+      const result = await callApi({
+        action: "deleteItemFactory",
+        password: adminPassword,
+        itemName,
+        reason,
+      });
+
+      if (!result.ok) {
+        showToast(result.message || "품목 삭제처리 실패");
+        return;
+      }
+
+      if (result.dashboardCache) {
+        applyDashboardCache(result.dashboardCache);
+      }
+
+      showToast(result.message || "품목 삭제처리 완료");
       await refreshMasterData();
     } catch (error) {
       showToast(error.message);
@@ -819,6 +858,7 @@ function App() {
             factories={actualFactoryOptions}
             onAdd={handleAddItemFactory}
             onUpdate={handleUpdateItemFactory}
+            onDelete={handleDeleteItemFactory}
           />
         )}
 
@@ -1801,7 +1841,7 @@ function DefectManagePage({
   );
 }
 
-function ItemFactoryPage({ items, factories, onAdd, onUpdate }) {
+function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
   const [newItemName, setNewItemName] = useState("");
   const [newFactoryName, setNewFactoryName] = useState(factories[0] || "");
   const [newMemo, setNewMemo] = useState("");
@@ -1815,6 +1855,18 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate }) {
     }
   }, [factories, newFactoryName]);
 
+  useEffect(() => {
+    const map = {};
+    items.forEach((item) => {
+      map[item.품목] = {
+        newItemName: item.품목,
+        newFactory: item.실제공장,
+        memo: item.비고 || "품목/공장 변경",
+      };
+    });
+    setEditMap(map);
+  }, [items]);
+
   const filteredItems = useMemo(() => {
     const keyword = search.trim();
     if (!keyword) return items;
@@ -1822,35 +1874,27 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate }) {
     return items.filter((item) => item.품목.includes(keyword));
   }, [items, search]);
 
-  function getEditValue(itemName, currentFactory) {
-    return editMap[itemName]?.factory || currentFactory;
-  }
-
-  function getEditMemo(itemName) {
-    return editMap[itemName]?.memo || "공장 변경";
-  }
-
-  function setEditValue(itemName, value) {
+  function updateEdit(itemName, field, value) {
     setEditMap((prev) => ({
       ...prev,
       [itemName]: {
         ...prev[itemName],
-        factory: value,
-      },
-    }));
-  }
-
-  function setEditMemo(itemName, value) {
-    setEditMap((prev) => ({
-      ...prev,
-      [itemName]: {
-        ...prev[itemName],
-        memo: value,
+        [field]: value,
       },
     }));
   }
 
   async function submitAdd() {
+    if (!newItemName.trim()) {
+      alert("품목명을 입력해주세요.");
+      return;
+    }
+
+    if (!newFactoryName) {
+      alert("공장을 선택해주세요.");
+      return;
+    }
+
     await onAdd({
       itemName: newItemName.trim(),
       factoryName: newFactoryName,
@@ -1862,20 +1906,75 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate }) {
   }
 
   async function submitUpdate(item) {
-    const itemName = item.품목;
-    const newFactory = getEditValue(itemName, item.실제공장);
-    const memo = getEditMemo(itemName);
+    const edit = editMap[item.품목] || {};
+    const oldItemName = item.품목;
+    const newItemName = String(edit.newItemName || "").trim();
+    const newFactory = String(edit.newFactory || "").trim();
+    const memo = String(edit.memo || "").trim() || "품목/공장 변경";
+
+    if (!newItemName) {
+      alert("변경품목명을 입력해주세요.");
+      return;
+    }
+
+    if (!newFactory) {
+      alert("변경공장을 선택해주세요.");
+      return;
+    }
+
+    const isNameChanged = oldItemName !== newItemName;
+    const isFactoryChanged = item.실제공장 !== newFactory;
+
+    if (!isNameChanged && !isFactoryChanged && memo === (item.비고 || "품목/공장 변경")) {
+      alert("변경된 내용이 없습니다.");
+      return;
+    }
+
+    let confirmText = `품목공장 정보를 수정할까요?\n\n기존품목: ${oldItemName}\n변경품목: ${newItemName}\n기존공장: ${item.실제공장}\n변경공장: ${newFactory}`;
+
+    if (isNameChanged) {
+      confirmText +=
+        "\n\n주의: 품목명을 변경하면 기존 공장별불량데이터와 전체불량원장의 품목명도 함께 변경됩니다.";
+    }
+
+    const ok = window.confirm(confirmText);
+
+    if (!ok) return;
 
     await onUpdate({
-      itemName,
+      oldItemName,
+      newItemName,
       newFactory,
       memo,
     });
   }
 
+  async function submitDelete(item) {
+    const reason = window.prompt(
+      `${item.품목} 품목을 삭제처리할까요?\n삭제사유를 입력해주세요.\n\n기존 불량내역은 보존되고, 앞으로 입력목록에서만 제외됩니다.`,
+      "사용하지 않는 품목"
+    );
+
+    if (!reason) return;
+
+    const ok = window.confirm(
+      `정말 삭제처리할까요?\n\n품목: ${item.품목}\n공장: ${item.실제공장}\n\n삭제 후 자동완성/신규입력 목록에서 제외됩니다.`
+    );
+
+    if (!ok) return;
+
+    await onDelete({
+      itemName: item.품목,
+      reason,
+    });
+  }
+
   return (
     <section className="page">
-      <PageTitle title="품목공장관리" subtitle="품목별 실제공장 수정 / 신규 품목 추가" />
+      <PageTitle
+        title="품목공장관리"
+        subtitle="품목명 전체 변경 / 공장 수정 / 품목 삭제처리"
+      />
 
       <div className="panel">
         <div className="panel-head">
@@ -1891,7 +1990,7 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate }) {
             <input
               value={newItemName}
               onChange={(e) => setNewItemName(e.target.value)}
-              placeholder="예: 마카롱"
+              placeholder="예: 마카롱(아,검,크,핑)"
             />
           </div>
 
@@ -1911,7 +2010,7 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate }) {
             <input
               value={newMemo}
               onChange={(e) => setNewMemo(e.target.value)}
-              placeholder="비고 선택"
+              placeholder="비고"
             />
           </div>
 
@@ -1924,8 +2023,11 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate }) {
       <div className="panel">
         <div className="panel-head">
           <div>
-            <h3>품목 공장 수정</h3>
-            <p>기존 저장 데이터는 그대로 유지되고, 이후 입력분부터 변경된 공장으로 저장됩니다.</p>
+            <h3>품목 수정 / 삭제</h3>
+            <p>
+              품목명 수정 시 기존 불량데이터와 전체불량원장 품목명도 함께 변경됩니다.
+              삭제는 사용중지 처리로 진행됩니다.
+            </p>
           </div>
         </div>
 
@@ -1942,51 +2044,104 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate }) {
           <table>
             <thead>
               <tr>
-                <th>품목</th>
+                <th>현재품목</th>
+                <th>변경품목명</th>
                 <th>현재공장</th>
                 <th>변경공장</th>
                 <th>비고</th>
+                <th>상태</th>
                 <th>관리</th>
               </tr>
             </thead>
             <tbody>
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="empty-cell">
+                  <td colSpan="7" className="empty-cell">
                     등록된 품목이 없습니다.
                   </td>
                 </tr>
               ) : (
-                filteredItems.map((item) => (
-                  <tr key={item.품목}>
-                    <td>{item.품목}</td>
-                    <td>{item.실제공장}</td>
-                    <td>
-                      <select
-                        value={getEditValue(item.품목, item.실제공장)}
-                        onChange={(e) => setEditValue(item.품목, e.target.value)}
-                      >
-                        {factories.map((factory) => (
-                          <option key={factory} value={factory}>
-                            {factory}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        value={getEditMemo(item.품목)}
-                        onChange={(e) => setEditMemo(item.품목, e.target.value)}
-                        placeholder="비고"
-                      />
-                    </td>
-                    <td>
-                      <button className="line-btn" onClick={() => submitUpdate(item)}>
-                        수정
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                filteredItems.map((item) => {
+                  const edit = editMap[item.품목] || {
+                    newItemName: item.품목,
+                    newFactory: item.실제공장,
+                    memo: item.비고 || "품목/공장 변경",
+                  };
+
+                  return (
+                    <tr key={item.품목}>
+                      <td>
+                        <strong>{item.품목}</strong>
+                      </td>
+
+                      <td>
+                        <input
+                          value={edit.newItemName || ""}
+                          onChange={(e) =>
+                            updateEdit(item.품목, "newItemName", e.target.value)
+                          }
+                          placeholder="변경품목명"
+                        />
+                      </td>
+
+                      <td>{item.실제공장}</td>
+
+                      <td>
+                        <select
+                          value={edit.newFactory || item.실제공장}
+                          onChange={(e) =>
+                            updateEdit(item.품목, "newFactory", e.target.value)
+                          }
+                        >
+                          {factories.map((factory) => (
+                            <option key={factory} value={factory}>
+                              {factory}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+
+                      <td>
+                        <input
+                          value={edit.memo || ""}
+                          onChange={(e) => updateEdit(item.품목, "memo", e.target.value)}
+                          placeholder="비고"
+                        />
+                      </td>
+
+                      <td>
+                        <strong>{item.사용여부 || "사용"}</strong>
+                      </td>
+
+                      <td>
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            justifyContent: "center",
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <button
+                            className="line-btn"
+                            onClick={() => submitUpdate(item)}
+                            style={{ height: 44, fontSize: 15 }}
+                          >
+                            수정
+                          </button>
+
+                          <button
+                            className="delete-btn"
+                            onClick={() => submitDelete(item)}
+                            style={{ height: 44, fontSize: 15 }}
+                          >
+                            삭제
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -1999,7 +2154,7 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate }) {
 function HistoryPage({ history }) {
   return (
     <section className="page">
-      <PageTitle title="공장변경이력" subtitle="품목 공장 변경 내역" />
+      <PageTitle title="공장변경이력" subtitle="품목명 / 공장 변경 / 품목 삭제 이력" />
 
       <div className="panel">
         <SimpleTable
