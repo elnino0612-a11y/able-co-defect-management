@@ -28,9 +28,7 @@ function pad2(value) {
 function parseAnyDate(value) {
   if (!value) return null;
 
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value;
-  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
 
   const raw = String(value).trim();
   if (!raw) return null;
@@ -49,7 +47,6 @@ function parseAnyDate(value) {
     const minute = Number(match[5] || 0);
     const second = Number(match[6] || 0);
     const date = new Date(year, month, day, hour, minute, second);
-
     if (!Number.isNaN(date.getTime())) return date;
   }
 
@@ -61,10 +58,7 @@ function parseAnyDate(value) {
 
 function formatLocalDate(date) {
   const d = parseAnyDate(date) || new Date();
-  const yyyy = d.getFullYear();
-  const mm = pad2(d.getMonth() + 1);
-  const dd = pad2(d.getDate());
-  return `${yyyy}-${mm}-${dd}`;
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
 function formatDateForInput(value) {
@@ -76,34 +70,24 @@ function formatDateForInput(value) {
 function formatKoreanDate(value) {
   const date = parseAnyDate(value);
   if (!date) return value ? String(value) : "-";
-
-  const yyyy = date.getFullYear();
-  const mm = pad2(date.getMonth() + 1);
-  const dd = pad2(date.getDate());
-
-  return `${yyyy}.${mm}.${dd}`;
+  return `${date.getFullYear()}.${pad2(date.getMonth() + 1)}.${pad2(date.getDate())}`;
 }
 
 function formatKoreanDateTime(value) {
   const date = parseAnyDate(value);
   if (!date) return value ? String(value) : "-";
 
-  const yyyy = date.getFullYear();
-  const mm = pad2(date.getMonth() + 1);
-  const dd = pad2(date.getDate());
-
   const hour24 = date.getHours();
   const ampm = hour24 < 12 ? "오전" : "오후";
   const hour12 = hour24 % 12 || 12;
-  const minute = pad2(date.getMinutes());
-  const second = pad2(date.getSeconds());
 
-  return `${yyyy}.${mm}.${dd} ${ampm} ${hour12}:${minute}:${second}`;
+  return `${date.getFullYear()}.${pad2(date.getMonth() + 1)}.${pad2(
+    date.getDate()
+  )} ${ampm} ${hour12}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 }
 
 function formatTableCell(value, columnName) {
   if (value === undefined || value === null || value === "") return "-";
-
   if (typeof value === "number") return value.toLocaleString();
 
   const col = String(columnName || "");
@@ -152,12 +136,8 @@ function getShortDateLabel(dateText) {
   const d = parseAnyDate(dateText);
   if (!d) return dateText;
 
-  const month = d.getMonth() + 1;
-  const date = d.getDate();
   const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
-  const day = dayNames[d.getDay()];
-
-  return `${month}/${date}(${day})`;
+  return `${d.getMonth() + 1}/${d.getDate()}(${dayNames[d.getDay()]})`;
 }
 
 async function callApi(payload) {
@@ -654,11 +634,7 @@ function App() {
 
       const header = ["품목", "수량"].join("\t");
       const body = rows
-        .map((row) => {
-          const item = row.품목 || "";
-          const qty = Number(row.수량 || 0);
-          return [item, qty].join("\t");
-        })
+        .map((row) => [row.품목 || "", Number(row.수량 || 0)].join("\t"))
         .join("\n");
 
       const totalLine = ["합계", totalQty].join("\t");
@@ -765,9 +741,7 @@ function App() {
             row.push("");
           }
 
-          if (groupIndex < groups.length - 1) {
-            row.push("");
-          }
+          if (groupIndex < groups.length - 1) row.push("");
         });
 
         sheetRows.push(row);
@@ -1027,6 +1001,61 @@ function App() {
     }
   }
 
+  async function handleBulkDeleteDefectRows({ registerNos, reason }) {
+    try {
+      if (!isAdmin || !adminPassword) {
+        showToast("관리자 로그인 후 이용 가능합니다.");
+        return;
+      }
+
+      if (!Array.isArray(registerNos) || registerNos.length === 0) {
+        showToast("선택된 불량내역이 없습니다.");
+        return;
+      }
+
+      setLoading(true);
+
+      let successCount = 0;
+      let failCount = 0;
+      let lastCache = null;
+
+      for (const registerNo of registerNos) {
+        const result = await callApi({
+          action: "deleteDefectRow",
+          password: adminPassword,
+          registerNo,
+          reason,
+        });
+
+        if (result.ok) {
+          successCount += 1;
+          if (result.dashboardCache) {
+            lastCache = result.dashboardCache;
+          }
+        } else {
+          failCount += 1;
+          console.error("선택삭제 실패:", registerNo, result.message);
+        }
+      }
+
+      if (lastCache) {
+        applyDashboardCache(lastCache);
+      }
+
+      await handleSearchManageRows();
+
+      if (failCount > 0) {
+        showToast(`선택삭제 완료: 성공 ${successCount}건 / 실패 ${failCount}건`);
+      } else {
+        showToast(`선택삭제 완료: ${successCount}건 삭제처리`);
+      }
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="app">
       <aside className="sidebar no-print">
@@ -1211,6 +1240,7 @@ function App() {
             onSearch={handleSearchManageRows}
             onUpdate={handleUpdateDefectRow}
             onDelete={handleDeleteDefectRow}
+            onBulkDelete={handleBulkDeleteDefectRows}
           />
         )}
 
@@ -1345,6 +1375,15 @@ function KpiCard({ title, value }) {
   );
 }
 
+function KpiTextCard({ title, value }) {
+  return (
+    <div className="kpi-card">
+      <p>{title}</p>
+      <strong style={{ fontSize: "clamp(28px, 3vw, 42px)" }}>{value}</strong>
+    </div>
+  );
+}
+
 function FactoryBarChart({ title, startDate, endDate, rows }) {
   const max = Math.max(...rows.map((row) => row.qty), 1);
 
@@ -1468,7 +1507,6 @@ function FactorySectionSummary({
 }) {
   const factorySections = useMemo(() => {
     const actualFactories = factoryOptions.filter((name) => name && name !== "전체");
-
     const targetFactories =
       selectedFactory && selectedFactory !== "전체" ? [selectedFactory] : actualFactories;
 
@@ -1484,7 +1522,6 @@ function FactorySectionSummary({
       const qty = Number(row.합계 || 0);
 
       if (selectedFactory !== "전체" && factoryName !== selectedFactory) return;
-
       if (!grouped[factoryName]) grouped[factoryName] = [];
 
       grouped[factoryName].push({
@@ -1533,8 +1570,8 @@ function FactorySectionSummary({
           <div>
             <h3>실제공장별 불량 품목 수량</h3>
             <p>
-              기간: {formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)} / 수량 많은 순서로
-              표시
+              기간: {formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)} / 수량 많은
+              순서로 표시
             </p>
           </div>
         </div>
@@ -1562,15 +1599,6 @@ function FactorySectionSummary({
         </div>
       </div>
     </>
-  );
-}
-
-function KpiTextCard({ title, value }) {
-  return (
-    <div className="kpi-card">
-      <p>{title}</p>
-      <strong style={{ fontSize: "clamp(28px, 3vw, 42px)" }}>{value}</strong>
-    </div>
   );
 }
 
@@ -1757,7 +1785,8 @@ function WeeklyPage({
         <div className="print-title">
           <h3>ABLE & CO 공장별 불량내역</h3>
           <p>
-            공장명: {factory} / 기간: {formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)}
+            공장명: {factory} / 기간: {formatKoreanDate(startDate)} ~{" "}
+            {formatKoreanDate(endDate)}
           </p>
         </div>
 
@@ -2117,9 +2146,7 @@ function AutocompleteInput({ value, onChange, options, inputRef, onEnter }) {
   const filtered = useMemo(() => {
     const keyword = String(value || "").trim();
 
-    if (!keyword) {
-      return options.slice(0, 30);
-    }
+    if (!keyword) return options.slice(0, 30);
 
     return options.filter((item) => item.includes(keyword)).slice(0, 30);
   }, [value, options]);
@@ -2237,15 +2264,25 @@ function DefectManagePage({
   onSearch,
   onUpdate,
   onDelete,
+  onBulkDelete,
 }) {
   const [editMap, setEditMap] = useState({});
   const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState([]);
 
   const pagination = getPaginationData(rows, page);
   const pageRows = pagination.pageRows;
 
+  const selectablePageRows = pageRows.filter((row) => row.상태 !== "삭제");
+  const selectedSet = useMemo(() => new Set(selectedIds.map(String)), [selectedIds]);
+
+  const isAllPageSelected =
+    selectablePageRows.length > 0 &&
+    selectablePageRows.every((row) => selectedSet.has(String(row.등록번호)));
+
   useEffect(() => {
     setPage(1);
+    setSelectedIds([]);
   }, [rows.length, startDate, endDate, factory, keyword, status]);
 
   useEffect(() => {
@@ -2269,6 +2306,73 @@ function DefectManagePage({
         [field]: value,
       },
     }));
+  }
+
+  function toggleSelect(registerNo) {
+    const key = String(registerNo);
+
+    setSelectedIds((prev) => {
+      const exists = prev.map(String).includes(key);
+
+      if (exists) {
+        return prev.filter((id) => String(id) !== key);
+      }
+
+      return [...prev, registerNo];
+    });
+  }
+
+  function toggleSelectAllPage() {
+    const pageIds = selectablePageRows.map((row) => row.등록번호);
+
+    if (isAllPageSelected) {
+      const pageIdSet = new Set(pageIds.map(String));
+      setSelectedIds((prev) => prev.filter((id) => !pageIdSet.has(String(id))));
+      return;
+    }
+
+    setSelectedIds((prev) => {
+      const merged = [...prev];
+
+      pageIds.forEach((id) => {
+        if (!merged.map(String).includes(String(id))) {
+          merged.push(id);
+        }
+      });
+
+      return merged;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds([]);
+  }
+
+  function submitBulkDelete() {
+    if (selectedIds.length === 0) {
+      alert("삭제처리할 항목을 체크해주세요.");
+      return;
+    }
+
+    const reason = window.prompt(
+      `선택한 ${selectedIds.length}건을 삭제처리할까요?\n삭제사유를 입력해주세요.`,
+      "오입력 일괄삭제"
+    );
+
+    if (!reason) return;
+
+    const ok = window.confirm(
+      `정말 선택한 ${selectedIds.length}건을 삭제처리할까요?\n삭제 후 조회/집계에서 제외됩니다.`
+    );
+
+    if (!ok) return;
+
+    onBulkDelete({
+      registerNos: selectedIds,
+      reason,
+    });
+
+    setSelectedIds([]);
   }
 
   function submitUpdate(row) {
@@ -2375,7 +2479,74 @@ function DefectManagePage({
         <div className="panel-head">
           <div>
             <h3>불량내역 목록</h3>
-            <p>20개씩 페이지로 표시됩니다. 삭제는 실제 행을 지우지 않고 삭제상태로 변경됩니다.</p>
+            <p>
+              20개씩 페이지로 표시됩니다. 체크 후 선택삭제를 누르면 선택한 항목이 삭제상태로 변경됩니다.
+            </p>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+            marginBottom: 14,
+            padding: "14px 16px",
+            borderRadius: 12,
+            background: "#fff8ec",
+            border: "1px solid #eadfcd",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontWeight: 900,
+                color: "#0a2747",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={isAllPageSelected}
+                onChange={toggleSelectAllPage}
+                style={{ width: 18, height: 18 }}
+              />
+              현재 페이지 전체선택
+            </label>
+
+            <strong style={{ color: "#8c6328" }}>
+              선택 {selectedIds.length.toLocaleString()}건
+            </strong>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              className="line-btn"
+              onClick={clearSelection}
+              type="button"
+              style={{ minHeight: 42, height: 42, fontSize: 15 }}
+            >
+              선택해제
+            </button>
+
+            <button
+              className="delete-btn"
+              onClick={submitBulkDelete}
+              type="button"
+              disabled={selectedIds.length === 0}
+              style={{
+                minHeight: 42,
+                height: 42,
+                fontSize: 15,
+                opacity: selectedIds.length === 0 ? 0.45 : 1,
+              }}
+            >
+              선택삭제
+            </button>
           </div>
         </div>
 
@@ -2383,6 +2554,7 @@ function DefectManagePage({
           <table>
             <thead>
               <tr>
+                <th>선택</th>
                 <th>등록번호</th>
                 <th>접수일</th>
                 <th>공장</th>
@@ -2397,7 +2569,7 @@ function DefectManagePage({
             <tbody>
               {pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="empty-cell">
+                  <td colSpan="9" className="empty-cell">
                     조회된 불량내역이 없습니다.
                   </td>
                 </tr>
@@ -2410,9 +2582,24 @@ function DefectManagePage({
                     reason: "오입력 수정",
                   };
                   const isDeleted = row.상태 === "삭제";
+                  const isSelected = selectedSet.has(String(row.등록번호));
 
                   return (
                     <tr key={row.등록번호}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          disabled={isDeleted}
+                          onChange={() => toggleSelect(row.등록번호)}
+                          style={{
+                            width: 18,
+                            height: 18,
+                            opacity: isDeleted ? 0.35 : 1,
+                          }}
+                        />
+                      </td>
+
                       <td>{row.등록번호}</td>
 
                       <td>
