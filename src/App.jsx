@@ -103,6 +103,13 @@ async function copyTextToClipboard(text) {
   textarea.remove();
 }
 
+function escapeExcelText(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function getPaginationData(rows, page, pageSize = PAGE_SIZE) {
   const safeRows = Array.isArray(rows) ? rows : [];
   const totalCount = safeRows.length;
@@ -578,7 +585,7 @@ function App() {
 
   async function handleCopyAllPaymentRows() {
     try {
-      const groups = ["조이", "미주", "삼창"];
+      const groups = ["조이", "삼창", "미주"];
       const lines = [["공장", "품목", "수량"].join("\t")];
 
       let allTotal = 0;
@@ -609,9 +616,160 @@ function App() {
       lines.push(["전체 합계", "", allTotal].join("\t"));
 
       await copyTextToClipboard(lines.join("\n"));
-      showToast("조이 / 미주 / 삼창 전체 불량내역 복사 완료");
+      showToast("조이 / 삼창 / 미주 전체 불량내역 복사 완료");
     } catch {
       showToast("전체 복사에 실패했습니다.");
+    }
+  }
+
+  function handleDownloadPaymentExcel() {
+    try {
+      const groups = ["조이", "삼창", "미주"];
+      const rowsByGroup = {
+        조이: paymentGrouped.조이 || [],
+        삼창: paymentGrouped.삼창 || [],
+        미주: paymentGrouped.미주 || [],
+      };
+
+      const hasData = groups.some((group) => rowsByGroup[group].length > 0);
+
+      if (!hasData) {
+        showToast("엑셀로 다운로드할 데이터가 없습니다.");
+        return;
+      }
+
+      const maxRows = Math.max(...groups.map((group) => rowsByGroup[group].length), 0);
+
+      const totals = {};
+      groups.forEach((group) => {
+        totals[group] = rowsByGroup[group].reduce(
+          (sum, row) => sum + Number(row.수량 || 0),
+          0
+        );
+      });
+
+      const bodyRows = [];
+
+      for (let i = 0; i < maxRows; i++) {
+        const cells = [];
+
+        groups.forEach((group) => {
+          const row = rowsByGroup[group][i];
+
+          if (row) {
+            cells.push(`<td>${escapeExcelText(row.품목 || "")}</td>`);
+            cells.push(`<td style="text-align:right;">${Number(row.수량 || 0)}</td>`);
+          } else {
+            cells.push("<td></td>");
+            cells.push("<td></td>");
+          }
+        });
+
+        bodyRows.push(`<tr>${cells.join("")}</tr>`);
+      }
+
+      const totalRow = groups
+        .map(
+          (group) =>
+            `<td style="font-weight:700;background:#f4ead9;">합계</td><td style="font-weight:700;text-align:right;background:#f4ead9;">${totals[group]}</td>`
+        )
+        .join("");
+
+      const title = `ABLE & CO 원단결제용 불량내역`;
+      const period = `${paymentStart} ~ ${paymentEnd}`;
+
+      const html = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<style>
+  body {
+    font-family: Arial, "Malgun Gothic", sans-serif;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  th, td {
+    border: 1px solid #333333;
+    padding: 8px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  th {
+    background: #0a2747;
+    color: #ffffff;
+    font-weight: 700;
+    text-align: center;
+  }
+  .subhead {
+    background: #f2eadc;
+    color: #000000;
+  }
+  .title {
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+    border: none;
+    padding: 12px;
+  }
+  .period {
+    font-size: 12px;
+    text-align: center;
+    border: none;
+    padding: 8px;
+  }
+</style>
+</head>
+<body>
+<table>
+  <tr>
+    <td class="title" colspan="6">${escapeExcelText(title)}</td>
+  </tr>
+  <tr>
+    <td class="period" colspan="6">기간: ${escapeExcelText(period)}</td>
+  </tr>
+  <tr>
+    <th colspan="2">조이</th>
+    <th colspan="2">삼창</th>
+    <th colspan="2">미주</th>
+  </tr>
+  <tr>
+    <th class="subhead">품목</th>
+    <th class="subhead">수량</th>
+    <th class="subhead">품목</th>
+    <th class="subhead">수량</th>
+    <th class="subhead">품목</th>
+    <th class="subhead">수량</th>
+  </tr>
+  ${bodyRows.join("")}
+  <tr>${totalRow}</tr>
+</table>
+</body>
+</html>
+`;
+
+      const blob = new Blob(["\ufeff", html], {
+        type: "application/vnd.ms-excel;charset=utf-8;",
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const safeStart = String(paymentStart || "").replaceAll("-", "");
+      const safeEnd = String(paymentEnd || "").replaceAll("-", "");
+
+      link.href = url;
+      link.download = `ABLE_CO_원단결제용_불량내역_${safeStart}_${safeEnd}.xls`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      showToast("원단결제용 엑셀 다운로드 완료");
+    } catch (error) {
+      console.error(error);
+      showToast("엑셀 다운로드에 실패했습니다.");
     }
   }
 
@@ -962,6 +1120,7 @@ function App() {
             onSearch={handlePaymentSearch}
             onCopyGroup={handleCopyPaymentRows}
             onCopyAllGroups={handleCopyAllPaymentRows}
+            onDownloadExcel={handleDownloadPaymentExcel}
           />
         )}
 
@@ -1391,22 +1550,23 @@ function PaymentPage({
   onSearch,
   onCopyGroup,
   onCopyAllGroups,
+  onDownloadExcel,
 }) {
-  const groups = paymentGroup === "전체" ? ["조이", "미주", "삼창"] : [paymentGroup];
+  const groups = paymentGroup === "전체" ? ["조이", "삼창", "미주"] : [paymentGroup];
 
   const getGroupTotal = (group) => {
     const rows = paymentGrouped[group] || [];
     return rows.reduce((sum, row) => sum + Number(row.수량 || 0), 0);
   };
 
-  const allTotal = ["조이", "미주", "삼창"].reduce(
+  const allTotal = ["조이", "삼창", "미주"].reduce(
     (sum, group) => sum + getGroupTotal(group),
     0
   );
 
   return (
     <section className="page">
-      <PageTitle title="원단결제용 불량내역" subtitle="조이 / 미주 / 삼창 기준 결제용 집계" />
+      <PageTitle title="원단결제용 불량내역" subtitle="조이 / 삼창 / 미주 기준 결제용 집계" />
 
       <div className="search-card compact">
         <div className="field">
@@ -1430,7 +1590,7 @@ function PaymentPage({
         <div className="field">
           <label>결제그룹</label>
           <select value={paymentGroup} onChange={(e) => setPaymentGroup(e.target.value)}>
-            {["전체", "조이", "미주", "삼창"].map((g) => (
+            {["전체", "조이", "삼창", "미주"].map((g) => (
               <option key={g} value={g}>
                 {g}
               </option>
@@ -1444,6 +1604,10 @@ function PaymentPage({
 
         <button className="line-btn" onClick={onCopyAllGroups} type="button">
           전체 복사
+        </button>
+
+        <button className="line-btn" onClick={onDownloadExcel} type="button">
+          엑셀 다운로드
         </button>
       </div>
 
@@ -1459,8 +1623,8 @@ function PaymentPage({
 
         <div className="kpi-grid">
           <KpiCard title="조이 합계" value={getGroupTotal("조이")} />
-          <KpiCard title="미주 합계" value={getGroupTotal("미주")} />
           <KpiCard title="삼창 합계" value={getGroupTotal("삼창")} />
+          <KpiCard title="미주 합계" value={getGroupTotal("미주")} />
           <KpiCard title="전체 합계" value={allTotal} />
         </div>
       </div>
