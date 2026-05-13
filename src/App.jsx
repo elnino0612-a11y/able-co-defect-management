@@ -21,12 +21,102 @@ const ADMIN_MENU = [
   { key: "history", label: "공장변경이력" },
 ];
 
+function pad2(value) {
+  return String(value).padStart(2, "0");
+}
+
+function parseAnyDate(value) {
+  if (!value) return null;
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const cleaned = raw.replace(/\s*\([^)]*\)\s*$/, "");
+
+  const match = cleaned.match(
+    /^(\d{4})[-./](\d{1,2})[-./](\d{1,2})(?:[T\s](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/
+  );
+
+  if (match) {
+    const year = Number(match[1]);
+    const month = Number(match[2]) - 1;
+    const day = Number(match[3]);
+    const hour = Number(match[4] || 0);
+    const minute = Number(match[5] || 0);
+    const second = Number(match[6] || 0);
+    const date = new Date(year, month, day, hour, minute, second);
+
+    if (!Number.isNaN(date.getTime())) return date;
+  }
+
+  const parsed = new Date(cleaned);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+
+  return null;
+}
+
 function formatLocalDate(date) {
-  const d = new Date(date);
+  const d = parseAnyDate(date) || new Date();
   const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = pad2(d.getMonth() + 1);
+  const dd = pad2(d.getDate());
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function formatDateForInput(value) {
+  const date = parseAnyDate(value);
+  if (!date) return "";
+  return formatLocalDate(date);
+}
+
+function formatKoreanDate(value) {
+  const date = parseAnyDate(value);
+  if (!date) return value ? String(value) : "-";
+
+  const yyyy = date.getFullYear();
+  const mm = pad2(date.getMonth() + 1);
+  const dd = pad2(date.getDate());
+
+  return `${yyyy}.${mm}.${dd}`;
+}
+
+function formatKoreanDateTime(value) {
+  const date = parseAnyDate(value);
+  if (!date) return value ? String(value) : "-";
+
+  const yyyy = date.getFullYear();
+  const mm = pad2(date.getMonth() + 1);
+  const dd = pad2(date.getDate());
+
+  const hour24 = date.getHours();
+  const ampm = hour24 < 12 ? "오전" : "오후";
+  const hour12 = hour24 % 12 || 12;
+  const minute = pad2(date.getMinutes());
+  const second = pad2(date.getSeconds());
+
+  return `${yyyy}.${mm}.${dd} ${ampm} ${hour12}:${minute}:${second}`;
+}
+
+function formatTableCell(value, columnName) {
+  if (value === undefined || value === null || value === "") return "-";
+
+  if (typeof value === "number") return value.toLocaleString();
+
+  const col = String(columnName || "");
+
+  if (col.includes("일시") || col.includes("시간") || col === "마지막갱신") {
+    return formatKoreanDateTime(value);
+  }
+
+  if (col === "접수일" || col === "수정일" || col === "삭제일" || col.endsWith("일")) {
+    return formatKoreanDate(value);
+  }
+
+  return String(value);
 }
 
 function getToday() {
@@ -59,11 +149,14 @@ function getDateRange(start, end) {
 }
 
 function getShortDateLabel(dateText) {
-  const d = new Date(`${dateText}T00:00:00`);
+  const d = parseAnyDate(dateText);
+  if (!d) return dateText;
+
   const month = d.getMonth() + 1;
   const date = d.getDate();
   const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
   const day = dayNames[d.getDay()];
+
   return `${month}/${date}(${day})`;
 }
 
@@ -644,7 +737,7 @@ function App() {
 
       const sheetRows = [
         ["ABLE & CO 원단결제용 불량내역", "", "", "", "", "", "", ""],
-        [`기간: ${paymentStart} ~ ${paymentEnd}`, "", "", "", "", "", "", ""],
+        [`기간: ${formatKoreanDate(paymentStart)} ~ ${formatKoreanDate(paymentEnd)}`, "", "", "", "", "", "", ""],
         ["조이", "", "", "삼창", "", "", "미주", ""],
         ["품목", "수량", "", "품목", "수량", "", "품목", "수량"],
       ];
@@ -1146,7 +1239,7 @@ function DashboardPage(props) {
 
       {props.lastUpdatedAt && (
         <div className="panel" style={{ padding: "16px 22px" }}>
-          <strong>마지막 갱신:</strong> {props.lastUpdatedAt}
+          <strong>마지막 갱신:</strong> {formatKoreanDateTime(props.lastUpdatedAt)}
           <span style={{ marginLeft: 10, color: "#8c8172" }}>
             저장된 마지막 현황을 먼저 표시합니다. 최신 데이터는 조회 버튼으로 갱신하세요.
           </span>
@@ -1228,7 +1321,7 @@ function SearchBox({
       </button>
 
       <p className="search-note">
-        처음 접속 시 최근 저장 현황을 먼저 표시하고, 최신 데이터는 조회 버튼으로 갱신합니다.
+        조회기간: {formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)}
       </p>
     </div>
   );
@@ -1252,7 +1345,7 @@ function FactoryBarChart({ title, startDate, endDate, rows }) {
       <div className="panel-head">
         <h3>{title}</h3>
         <p>
-          기간: {startDate} ~ {endDate}
+          기간: {formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)}
         </p>
       </div>
 
@@ -1368,7 +1461,7 @@ function WeeklyPage({
 
     periodRows.forEach((row) => {
       const item = row.품목;
-      const date = row.접수일;
+      const date = formatDateForInput(row.접수일);
       const qty = Number(row.수량 || 0);
 
       if (!item || !dateColumns.includes(date)) return;
@@ -1432,7 +1525,7 @@ function WeeklyPage({
         <div className="print-title">
           <h3>ABLE & CO 불량 보고서</h3>
           <p>
-            공장명: {factory} / 기간: {startDate} ~ {endDate}
+            공장명: {factory} / 기간: {formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)}
           </p>
         </div>
 
@@ -1561,7 +1654,7 @@ function PaymentPage({
           <div>
             <h3>원단결제용 합계</h3>
             <p>
-              기간: {paymentStart} ~ {paymentEnd}
+              기간: {formatKoreanDate(paymentStart)} ~ {formatKoreanDate(paymentEnd)}
             </p>
           </div>
         </div>
@@ -1589,7 +1682,8 @@ function PaymentPage({
                 <div>
                   <h3>{group}</h3>
                   <p>
-                    {paymentStart} ~ {paymentEnd} / 합계 {groupTotal.toLocaleString()}장
+                    {formatKoreanDate(paymentStart)} ~ {formatKoreanDate(paymentEnd)} / 합계{" "}
+                    {groupTotal.toLocaleString()}장
                   </p>
                 </div>
 
@@ -1926,7 +2020,7 @@ function DefectManagePage({
     const map = {};
     rows.forEach((row) => {
       map[row.등록번호] = {
-        date: row.접수일 || "",
+        date: formatDateForInput(row.접수일),
         item: row.품목 || "",
         qty: row.수량 || "",
         reason: "오입력 수정",
@@ -2078,7 +2172,7 @@ function DefectManagePage({
               ) : (
                 pageRows.map((row) => {
                   const edit = editMap[row.등록번호] || {
-                    date: row.접수일,
+                    date: formatDateForInput(row.접수일),
                     item: row.품목,
                     qty: row.수량,
                     reason: "오입력 수정",
@@ -2091,7 +2185,7 @@ function DefectManagePage({
 
                       <td>
                         {isDeleted ? (
-                          row.접수일
+                          formatKoreanDate(row.접수일)
                         ) : (
                           <input
                             type="date"
@@ -2629,7 +2723,7 @@ function SimpleTable({ columns, rows, labelMap = {}, suffixMap = {} }) {
               <tr key={index}>
                 {columns.map((col) => (
                   <td key={col}>
-                    {formatCell(row[col])}
+                    {formatTableCell(row[col], col)}
                     {row[col] !== undefined && row[col] !== "" && suffixMap[col]
                       ? suffixMap[col]
                       : ""}
@@ -2642,12 +2736,6 @@ function SimpleTable({ columns, rows, labelMap = {}, suffixMap = {} }) {
       </table>
     </div>
   );
-}
-
-function formatCell(value) {
-  if (value === undefined || value === null || value === "") return "-";
-  if (typeof value === "number") return value.toLocaleString();
-  return String(value);
 }
 
 export default App;
