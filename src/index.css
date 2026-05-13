@@ -680,12 +680,15 @@ tbody tr:hover td {
   font-weight: 700;
 }
 
-.auto-list button:hover {
+.auto-list button:hover,
+.auto-list button.auto-active {
   background: #f4ead9;
+  color: #0a2747;
+  font-weight: 900;
 }
 
 /* =========================
-   Print
+   Print Preview Base
 ========================= */
 
 .print-panel {
@@ -1176,7 +1179,7 @@ tbody tr:hover td {
 }
 
 /* =========================
-   Print
+   Print - 안정형 백지 방지 버전
 ========================= */
 
 @media print {
@@ -1187,94 +1190,113 @@ tbody tr:hover td {
 
   html,
   body {
-    width: 210mm;
-    min-height: 297mm;
-    margin: 0;
-    padding: 0;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
     background: #ffffff !important;
     color: #000000 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  body * {
-    visibility: hidden !important;
-  }
-
-  .print-panel,
-  .print-panel * {
-    visibility: visible !important;
-  }
-
-  .no-print {
+  .sidebar,
+  .top-status,
+  .page-title,
+  .search-card,
+  .no-print,
+  .loading,
+  .toast {
     display: none !important;
-    visibility: hidden !important;
   }
 
   .app {
     display: block !important;
+    width: 100% !important;
     min-height: auto !important;
+    overflow: visible !important;
     background: #ffffff !important;
   }
 
   .main {
+    display: block !important;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
+    background: #ffffff !important;
   }
 
   .page,
   .weekly-page {
     display: block !important;
+    width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
+    gap: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+
+  .weekly-page > *:not(.print-panel) {
+    display: none !important;
   }
 
   .print-panel {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
+    display: block !important;
     width: 100% !important;
-    box-shadow: none !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
     border: none !important;
     border-radius: 0 !important;
+    box-shadow: none !important;
     background: #ffffff !important;
-    padding: 0 !important;
-    margin: 0 !important;
     overflow: visible !important;
   }
 
   .print-title {
-    margin-bottom: 12mm !important;
+    display: block !important;
     text-align: center !important;
+    margin: 0 0 12mm 0 !important;
+    padding: 0 !important;
   }
 
   .print-title h3 {
-    font-size: 21px !important;
-    color: #000000 !important;
     margin: 0 0 6px !important;
     font-family: "Noto Serif KR", serif !important;
+    font-size: 21px !important;
+    line-height: 1.25 !important;
+    color: #000000 !important;
   }
 
   .print-title p {
-    font-size: 12px !important;
-    color: #000000 !important;
     margin: 0 !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    color: #000000 !important;
+    font-weight: 700 !important;
   }
 
-  .table-wrap {
+  .table-wrap,
+  .weekly-print-table {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
     overflow: visible !important;
     border: none !important;
     border-radius: 0 !important;
+    background: #ffffff !important;
   }
 
   table {
     width: 100% !important;
     min-width: 0 !important;
-    border-collapse: collapse !important;
+    max-width: 100% !important;
     table-layout: fixed !important;
+    border-collapse: collapse !important;
     background: #ffffff !important;
   }
 
@@ -1311,10 +1333,6 @@ tbody tr:hover td {
 
   tr {
     page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
-}
-.auto-list button.auto-active {
-  background: #f4ead9;
-  color: #0a2747;
-  font-weight: 900;
 }
