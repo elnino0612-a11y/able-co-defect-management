@@ -27,26 +27,25 @@ function pad2(value) {
 
 function parseAnyDate(value) {
   if (!value) return null;
-
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
 
   const raw = String(value).trim();
   if (!raw) return null;
 
   const cleaned = raw.replace(/\s*\([^)]*\)\s*$/, "");
-
   const match = cleaned.match(
     /^(\d{4})[-./](\d{1,2})[-./](\d{1,2})(?:[T\s](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/
   );
 
   if (match) {
-    const year = Number(match[1]);
-    const month = Number(match[2]) - 1;
-    const day = Number(match[3]);
-    const hour = Number(match[4] || 0);
-    const minute = Number(match[5] || 0);
-    const second = Number(match[6] || 0);
-    const date = new Date(year, month, day, hour, minute, second);
+    const date = new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      Number(match[4] || 0),
+      Number(match[5] || 0),
+      Number(match[6] || 0)
+    );
     if (!Number.isNaN(date.getTime())) return date;
   }
 
@@ -533,10 +532,7 @@ function App() {
 
   function removeInputRow(id) {
     setInputRows((prev) => {
-      if (prev.length <= 1) {
-        return [{ id: Date.now(), item: "", qty: "" }];
-      }
-
+      if (prev.length <= 1) return [{ id: Date.now(), item: "", qty: "" }];
       return prev.filter((row) => row.id !== id);
     });
   }
@@ -631,12 +627,10 @@ function App() {
       }
 
       const totalQty = rows.reduce((sum, row) => sum + Number(row.수량 || 0), 0);
-
       const header = ["품목", "수량"].join("\t");
       const body = rows
         .map((row) => [row.품목 || "", Number(row.수량 || 0)].join("\t"))
         .join("\n");
-
       const totalLine = ["합계", totalQty].join("\t");
 
       await copyTextToClipboard(`${header}\n${body}\n${totalLine}`);
@@ -660,11 +654,9 @@ function App() {
 
         if (rows.length > 0) {
           hasData = true;
-
           rows.forEach((row) => {
             lines.push([group, row.품목 || "", Number(row.수량 || 0)].join("\t"));
           });
-
           lines.push([`${group} 합계`, "", groupTotal].join("\t"));
         }
 
@@ -677,7 +669,6 @@ function App() {
       }
 
       lines.push(["전체 합계", "", allTotal].join("\t"));
-
       await copyTextToClipboard(lines.join("\n"));
       showToast("조이 / 삼창 / 미주 전체 불량내역 복사 완료");
     } catch {
@@ -1715,40 +1706,71 @@ function WeeklyPage({
   onSearch,
   periodRows,
 }) {
-  const weeklyTable = useMemo(() => {
+  const weeklyReport = useMemo(() => {
     const dateColumns = getDateRange(startDate, endDate);
     const map = {};
 
     periodRows.forEach((row) => {
+      const factoryName = row.실제공장 || "미분류";
       const item = row.품목;
       const date = formatDateForInput(row.접수일);
       const qty = Number(row.수량 || 0);
 
       if (!item || !dateColumns.includes(date)) return;
+      if (factory !== "전체" && factoryName !== factory) return;
 
-      if (!map[item]) {
-        map[item] = {
+      if (!map[factoryName]) {
+        map[factoryName] = {};
+      }
+
+      if (!map[factoryName][item]) {
+        map[factoryName][item] = {
           품목: item,
           합계: 0,
         };
 
         dateColumns.forEach((dateText) => {
-          map[item][dateText] = 0;
+          map[factoryName][item][dateText] = 0;
         });
       }
 
-      map[item][date] += qty;
-      map[item].합계 += qty;
+      map[factoryName][item][date] += qty;
+      map[factoryName][item].합계 += qty;
     });
 
-    const rows = Object.values(map).sort((a, b) => b.합계 - a.합계);
+    const sections = Object.entries(map)
+      .map(([factoryName, itemMap]) => {
+        const rows = Object.values(itemMap).sort((a, b) => b.합계 - a.합계);
+        const total = rows.reduce((sum, row) => sum + Number(row.합계 || 0), 0);
 
-    return { dateColumns, rows };
-  }, [periodRows, startDate, endDate]);
+        return {
+          factoryName,
+          rows,
+          total,
+        };
+      })
+      .filter((section) => section.total > 0)
+      .sort((a, b) => {
+        if (factory !== "전체") return 0;
+        if (b.total !== a.total) return b.total - a.total;
+        return a.factoryName.localeCompare(b.factoryName, "ko");
+      });
+
+    return { dateColumns, sections };
+  }, [periodRows, startDate, endDate, factory]);
+
+  const isAllFactoryPrint = factory === "전체";
+  const totalPrintQty = weeklyReport.sections.reduce(
+    (sum, section) => sum + Number(section.total || 0),
+    0
+  );
 
   return (
     <section className="page weekly-page">
-      <PageTitle title="공장별 불량내역" subtitle="품목별 날짜 수량 인쇄용 보고서" />
+      <PageTitle
+        title="공장별 불량내역"
+        subtitle="공장 전체 또는 개별 공장을 선택해 인쇄할 수 있습니다."
+      />
 
       <div className="search-card compact no-print">
         <div className="field">
@@ -1779,18 +1801,67 @@ function WeeklyPage({
         <button className="line-btn print-btn" onClick={() => window.print()}>
           인쇄하기
         </button>
+
+        <p className="search-note">
+          공장을 전체로 두고 인쇄하면 수량이 있는 모든 공장이 공장별 페이지로 나뉘어 한 번에
+          인쇄됩니다.
+        </p>
       </div>
 
       <div className="panel print-panel">
         <div className="print-title">
           <h3>ABLE & CO 공장별 불량내역</h3>
           <p>
-            공장명: {factory} / 기간: {formatKoreanDate(startDate)} ~{" "}
-            {formatKoreanDate(endDate)}
+            기간: {formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)} /{" "}
+            {isAllFactoryPrint
+              ? `전체 공장 ${weeklyReport.sections.length.toLocaleString()}곳 / 총 ${totalPrintQty.toLocaleString()}장`
+              : `공장명: ${factory} / 총 ${totalPrintQty.toLocaleString()}장`}
           </p>
         </div>
 
-        <WeeklyPivotTable dateColumns={weeklyTable.dateColumns} rows={weeklyTable.rows} />
+        {weeklyReport.sections.length === 0 ? (
+          <div className="empty-cell">조회된 공장별 불량내역 데이터가 없습니다.</div>
+        ) : isAllFactoryPrint ? (
+          <div>
+            {weeklyReport.sections.map((section, index) => (
+              <div
+                key={section.factoryName}
+                className="factory-print-section"
+                style={{
+                  pageBreakAfter:
+                    index === weeklyReport.sections.length - 1 ? "auto" : "always",
+                  breakAfter: index === weeklyReport.sections.length - 1 ? "auto" : "page",
+                  marginBottom: index === weeklyReport.sections.length - 1 ? 0 : 34,
+                }}
+              >
+                <div className="print-title" style={{ marginTop: index === 0 ? 0 : 8 }}>
+                  <h3>{section.factoryName}</h3>
+                  <p>
+                    기간: {formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)} / 합계{" "}
+                    {Number(section.total || 0).toLocaleString()}장
+                  </p>
+                </div>
+
+                <WeeklyPivotTable dateColumns={weeklyReport.dateColumns} rows={section.rows} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="factory-print-section">
+            <div className="print-title">
+              <h3>{weeklyReport.sections[0]?.factoryName || factory}</h3>
+              <p>
+                기간: {formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)} / 합계{" "}
+                {Number(weeklyReport.sections[0]?.total || 0).toLocaleString()}장
+              </p>
+            </div>
+
+            <WeeklyPivotTable
+              dateColumns={weeklyReport.dateColumns}
+              rows={weeklyReport.sections[0]?.rows || []}
+            />
+          </div>
+        )}
       </div>
     </section>
   );
@@ -2147,7 +2218,6 @@ function AutocompleteInput({ value, onChange, options, inputRef, onEnter }) {
     const keyword = String(value || "").trim();
 
     if (!keyword) return options.slice(0, 30);
-
     return options.filter((item) => item.includes(keyword)).slice(0, 30);
   }, [value, options]);
 
@@ -2776,7 +2846,6 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
   const filteredItems = useMemo(() => {
     const keyword = search.trim();
     if (!keyword) return items;
-
     return items.filter((item) => item.품목.includes(keyword));
   }, [items, search]);
 
