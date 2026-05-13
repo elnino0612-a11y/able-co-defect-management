@@ -4,6 +4,8 @@ import "./index.css";
 const API_URL =
   "https://script.google.com/macros/s/AKfycbxggqOeUjXq2NQx1NOMNuaUmp4jXBHiD_Ixd9Dn5FO3W8VILUynLORK84SYjrS5GFj1/exec";
 
+const PAGE_SIZE = 20;
+
 const PUBLIC_MENU = [
   { key: "dashboard", label: "대시보드" },
   { key: "total", label: "전체 불량현황" },
@@ -99,6 +101,117 @@ async function copyTextToClipboard(text) {
   textarea.select();
   document.execCommand("copy");
   textarea.remove();
+}
+
+function getPaginationData(rows, page, pageSize = PAGE_SIZE) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const totalCount = safeRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const startIndex = (safePage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+
+  return {
+    totalCount,
+    totalPages,
+    safePage,
+    pageRows: safeRows.slice(startIndex, endIndex),
+    startNumber: totalCount === 0 ? 0 : startIndex + 1,
+    endNumber: Math.min(endIndex, totalCount),
+  };
+}
+
+function Pagination({ page, setPage, totalCount, totalPages, startNumber, endNumber }) {
+  if (!totalCount || totalCount <= PAGE_SIZE) return null;
+
+  const maxButtons = 5;
+  let startPage = Math.max(1, page - Math.floor(maxButtons / 2));
+  let endPage = startPage + maxButtons - 1;
+
+  if (endPage > totalPages) {
+    endPage = totalPages;
+    startPage = Math.max(1, endPage - maxButtons + 1);
+  }
+
+  const pages = [];
+
+  for (let p = startPage; p <= endPage; p++) {
+    pages.push(p);
+  }
+
+  return (
+    <div
+      className="no-print"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        flexWrap: "wrap",
+        marginTop: 16,
+      }}
+    >
+      <div style={{ color: "#8c8172", fontWeight: 800, fontSize: 14 }}>
+        총 {totalCount.toLocaleString()}건 / {startNumber.toLocaleString()}-
+        {endNumber.toLocaleString()} 표시 / {page}페이지
+      </div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <button
+          className="line-btn"
+          style={{ minHeight: 40, height: 40, fontSize: 14, padding: "0 12px" }}
+          disabled={page <= 1}
+          onClick={() => setPage(1)}
+        >
+          처음
+        </button>
+
+        <button
+          className="line-btn"
+          style={{ minHeight: 40, height: 40, fontSize: 14, padding: "0 12px" }}
+          disabled={page <= 1}
+          onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+        >
+          이전
+        </button>
+
+        {pages.map((p) => (
+          <button
+            key={p}
+            className={p === page ? "search-btn" : "line-btn"}
+            style={{
+              minHeight: 40,
+              height: 40,
+              minWidth: 40,
+              fontSize: 14,
+              padding: "0 12px",
+            }}
+            onClick={() => setPage(p)}
+          >
+            {p}
+          </button>
+        ))}
+
+        <button
+          className="line-btn"
+          style={{ minHeight: 40, height: 40, fontSize: 14, padding: "0 12px" }}
+          disabled={page >= totalPages}
+          onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+        >
+          다음
+        </button>
+
+        <button
+          className="line-btn"
+          style={{ minHeight: 40, height: 40, fontSize: 14, padding: "0 12px" }}
+          disabled={page >= totalPages}
+          onClick={() => setPage(totalPages)}
+        >
+          끝
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function App() {
@@ -1075,9 +1188,12 @@ function TotalPage(props) {
 
       <div className="panel">
         <div className="panel-head">
-          <h3>입력 원본 내역</h3>
+          <div>
+            <h3>입력 원본 내역</h3>
+            <p>20개씩 페이지로 표시됩니다.</p>
+          </div>
         </div>
-        <SimpleTable
+        <PaginatedSimpleTable
           columns={["등록번호", "접수일", "실제공장", "결제그룹", "품목", "수량", "등록일시"]}
           rows={props.periodRows}
           suffixMap={{ 수량: "장" }}
@@ -1538,6 +1654,14 @@ function DefectManagePage({
   onDelete,
 }) {
   const [editMap, setEditMap] = useState({});
+  const [page, setPage] = useState(1);
+
+  const pagination = getPaginationData(rows, page);
+  const pageRows = pagination.pageRows;
+
+  useEffect(() => {
+    setPage(1);
+  }, [rows.length, startDate, endDate, factory, keyword, status]);
 
   useEffect(() => {
     const map = {};
@@ -1666,7 +1790,7 @@ function DefectManagePage({
         <div className="panel-head">
           <div>
             <h3>불량내역 목록</h3>
-            <p>삭제는 실제 행을 지우지 않고 삭제상태로 변경됩니다.</p>
+            <p>20개씩 페이지로 표시됩니다. 삭제는 실제 행을 지우지 않고 삭제상태로 변경됩니다.</p>
           </div>
         </div>
 
@@ -1686,14 +1810,14 @@ function DefectManagePage({
             </thead>
 
             <tbody>
-              {rows.length === 0 ? (
+              {pageRows.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="empty-cell">
                     조회된 불량내역이 없습니다.
                   </td>
                 </tr>
               ) : (
-                rows.map((row) => {
+                pageRows.map((row) => {
                   const edit = editMap[row.등록번호] || {
                     date: row.접수일,
                     item: row.품목,
@@ -1836,6 +1960,15 @@ function DefectManagePage({
             </tbody>
           </table>
         </div>
+
+        <Pagination
+          page={pagination.safePage}
+          setPage={setPage}
+          totalCount={pagination.totalCount}
+          totalPages={pagination.totalPages}
+          startNumber={pagination.startNumber}
+          endNumber={pagination.endNumber}
+        />
       </div>
     </section>
   );
@@ -1848,6 +1981,7 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
 
   const [search, setSearch] = useState("");
   const [editMap, setEditMap] = useState({});
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     if (!newFactoryName && factories.length > 0) {
@@ -1873,6 +2007,13 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
 
     return items.filter((item) => item.품목.includes(keyword));
   }, [items, search]);
+
+  const pagination = getPaginationData(filteredItems, page);
+  const pageItems = pagination.pageRows;
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, items.length]);
 
   function updateEdit(itemName, field, value) {
     setEditMap((prev) => ({
@@ -2025,8 +2166,7 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
           <div>
             <h3>품목 수정 / 삭제</h3>
             <p>
-              품목명 수정 시 기존 불량데이터와 전체불량원장 품목명도 함께 변경됩니다.
-              삭제는 사용중지 처리로 진행됩니다.
+              20개씩 페이지로 표시됩니다. 품목명 수정 시 기존 불량데이터와 전체불량원장 품목명도 함께 변경됩니다.
             </p>
           </div>
         </div>
@@ -2054,14 +2194,14 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
               </tr>
             </thead>
             <tbody>
-              {filteredItems.length === 0 ? (
+              {pageItems.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="empty-cell">
                     등록된 품목이 없습니다.
                   </td>
                 </tr>
               ) : (
-                filteredItems.map((item) => {
+                pageItems.map((item) => {
                   const edit = editMap[item.품목] || {
                     newItemName: item.품목,
                     newFactory: item.실제공장,
@@ -2146,6 +2286,15 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
             </tbody>
           </table>
         </div>
+
+        <Pagination
+          page={pagination.safePage}
+          setPage={setPage}
+          totalCount={pagination.totalCount}
+          totalPages={pagination.totalPages}
+          startNumber={pagination.startNumber}
+          endNumber={pagination.endNumber}
+        />
       </div>
     </section>
   );
@@ -2157,12 +2306,43 @@ function HistoryPage({ history }) {
       <PageTitle title="공장변경이력" subtitle="품목명 / 공장 변경 / 품목 삭제 이력" />
 
       <div className="panel">
-        <SimpleTable
+        <PaginatedSimpleTable
           columns={["변경일시", "품목", "이전공장", "변경공장", "비고"]}
           rows={history}
         />
       </div>
     </section>
+  );
+}
+
+function PaginatedSimpleTable({ columns, rows, labelMap = {}, suffixMap = {} }) {
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+  }, [rows?.length]);
+
+  const pagination = getPaginationData(rows || [], page);
+  const pageRows = pagination.pageRows;
+
+  return (
+    <>
+      <SimpleTable
+        columns={columns}
+        rows={pageRows}
+        labelMap={labelMap}
+        suffixMap={suffixMap}
+      />
+
+      <Pagination
+        page={pagination.safePage}
+        setPage={setPage}
+        totalCount={pagination.totalCount}
+        totalPages={pagination.totalPages}
+        startNumber={pagination.startNumber}
+        endNumber={pagination.endNumber}
+      />
+    </>
   );
 }
 
