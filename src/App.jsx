@@ -107,6 +107,20 @@ function getToday() {
   return formatLocalDate(new Date());
 }
 
+function getRecent7Start() {
+  const d = new Date();
+  d.setDate(d.getDate() - 6);
+  return formatLocalDate(d);
+}
+
+function getDefaultStartDate() {
+  return getRecent7Start();
+}
+
+function getDefaultEndDate() {
+  return getToday();
+}
+
 function getMonthStart() {
   const d = new Date();
   return formatLocalDate(new Date(d.getFullYear(), d.getMonth(), 1));
@@ -305,8 +319,8 @@ function App() {
   const [items, setItems] = useState([]);
   const [history, setHistory] = useState([]);
 
-  const [startDate, setStartDate] = useState(getMonthStart());
-  const [endDate, setEndDate] = useState(getMonthEnd());
+  const [startDate, setStartDate] = useState(getDefaultStartDate());
+  const [endDate, setEndDate] = useState(getDefaultEndDate());
   const [factory, setFactory] = useState("전체");
   const [keyword, setKeyword] = useState("");
 
@@ -322,8 +336,8 @@ function App() {
   const [itemSummary, setItemSummary] = useState([]);
   const [lastUpdatedAt, setLastUpdatedAt] = useState("");
 
-  const [paymentStart, setPaymentStart] = useState(getMonthStart());
-  const [paymentEnd, setPaymentEnd] = useState(getMonthEnd());
+  const [paymentStart, setPaymentStart] = useState(getDefaultStartDate());
+  const [paymentEnd, setPaymentEnd] = useState(getDefaultEndDate());
   const [paymentGroup, setPaymentGroup] = useState("전체");
   const [paymentGrouped, setPaymentGrouped] = useState({
     조이: [],
@@ -340,8 +354,8 @@ function App() {
     { id: 5, item: "", qty: "" },
   ]);
 
-  const [manageStartDate, setManageStartDate] = useState(getMonthStart());
-  const [manageEndDate, setManageEndDate] = useState(getMonthEnd());
+  const [manageStartDate, setManageStartDate] = useState(getDefaultStartDate());
+  const [manageEndDate, setManageEndDate] = useState(getDefaultEndDate());
   const [manageFactory, setManageFactory] = useState("전체");
   const [manageKeyword, setManageKeyword] = useState("");
   const [manageStatus, setManageStatus] = useState("정상");
@@ -384,8 +398,8 @@ function App() {
   function applyDashboardCache(cache) {
     if (!cache) return;
 
-    setStartDate(cache.시작일 || getMonthStart());
-    setEndDate(cache.종료일 || getMonthEnd());
+    setStartDate(cache.시작일 || getDefaultStartDate());
+    setEndDate(cache.종료일 || getDefaultEndDate());
     setFactory(cache.공장 || "전체");
     setKeyword(cache.품목검색 || "");
 
@@ -424,8 +438,8 @@ function App() {
         applyDashboardCache(result.dashboardCache);
         showToast("최근 저장된 현황을 불러왔습니다.");
       } else {
-        setStartDate(getMonthStart());
-        setEndDate(getMonthEnd());
+        setStartDate(getDefaultStartDate());
+        setEndDate(getDefaultEndDate());
         showToast("저장된 최근 현황이 없습니다. 조회 버튼을 눌러주세요.");
       }
     } catch (error) {
