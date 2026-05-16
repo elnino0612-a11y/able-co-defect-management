@@ -1172,6 +1172,7 @@ function App() {
             factoryOptions={factoryOptions}
             onSearch={handleDashboardSearch}
             periodRows={periodRows}
+            onToast={showToast}
           />
         )}
 
@@ -1735,6 +1736,7 @@ function WeeklyPage({
   factoryOptions,
   onSearch,
   periodRows,
+  onToast,
 }) {
   const weeklyReport = useMemo(() => {
     const dateColumns = getDateRange(startDate, endDate);
@@ -1795,11 +1797,75 @@ function WeeklyPage({
     0
   );
 
+  async function handleCopyWeeklyExcel() {
+    try {
+      if (!weeklyReport.sections.length) {
+        onToast?.("복사할 공장별 불량내역이 없습니다.");
+        return;
+      }
+
+      const dateLabels = weeklyReport.dateColumns.map((dateText) => getShortDateLabel(dateText));
+      const lines = [];
+
+      weeklyReport.sections.forEach((section, sectionIndex) => {
+        if (sectionIndex > 0) {
+          lines.push("");
+        }
+
+        lines.push([section.factoryName].join("\t"));
+        lines.push([
+          `기간: ${formatKoreanDate(startDate)} ~ ${formatKoreanDate(endDate)} / 합계 ${Number(
+            section.total || 0
+          ).toLocaleString()}장`,
+        ].join("\t"));
+
+        lines.push(["품목", ...dateLabels, "합계"].join("\t"));
+
+        section.rows.forEach((row) => {
+          const rowValues = [
+            row.품목,
+            ...weeklyReport.dateColumns.map((dateText) => {
+              const qty = Number(row[dateText] || 0);
+              return qty > 0 ? qty : "";
+            }),
+            Number(row.합계 || 0),
+          ];
+
+          lines.push(rowValues.join("\t"));
+        });
+
+        const dateTotals = weeklyReport.dateColumns.map((dateText) => {
+          const dateTotal = section.rows.reduce(
+            (sum, row) => sum + Number(row[dateText] || 0),
+            0
+          );
+
+          return dateTotal > 0 ? dateTotal : "";
+        });
+
+        lines.push(["합계", ...dateTotals, Number(section.total || 0)].join("\t"));
+      });
+
+      await copyTextToClipboard(lines.join("\n"));
+
+      if (factory === "전체") {
+        onToast?.(
+          `전체 공장 ${weeklyReport.sections.length.toLocaleString()}곳 공장별 불량내역 엑셀복사 완료`
+        );
+      } else {
+        onToast?.(`${factory} 공장별 불량내역 엑셀복사 완료`);
+      }
+    } catch (error) {
+      console.error(error);
+      onToast?.("엑셀복사에 실패했습니다.");
+    }
+  }
+
   return (
     <section className="page weekly-page">
       <PageTitle
         title="공장별 불량내역"
-        subtitle="공장 전체 또는 개별 공장을 선택해 인쇄할 수 있습니다."
+        subtitle="공장 전체 또는 개별 공장을 선택해 인쇄/복사할 수 있습니다."
       />
 
       <div className="search-card compact no-print">
@@ -1828,13 +1894,16 @@ function WeeklyPage({
           최신 조회
         </button>
 
+        <button className="line-btn" onClick={handleCopyWeeklyExcel} type="button">
+          엑셀복사
+        </button>
+
         <button className="line-btn print-btn" onClick={() => window.print()}>
           인쇄하기
         </button>
 
         <p className="search-note">
-          공장을 전체로 두고 인쇄하면 수량이 있는 모든 공장이 공장별 페이지로 나뉘어 한 번에
-          인쇄됩니다.
+          공장을 전체로 두고 인쇄/복사하면 수량이 있는 모든 공장이 공장별로 나뉘어 처리됩니다.
         </p>
       </div>
 
