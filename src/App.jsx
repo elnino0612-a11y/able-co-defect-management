@@ -6,6 +6,7 @@ const API_URL =
   "https://script.google.com/macros/s/AKfycbxggqOeUjXq2NQx1NOMNuaUmp4jXBHiD_Ixd9Dn5FO3W8VILUynLORK84SYjrS5GFj1/exec";
 
 const PAGE_SIZE = 20;
+const UNCLASSIFIED_FACTORY = "미분류공장";
 
 const PUBLIC_MENU = [
   { key: "dashboard", label: "대시보드" },
@@ -119,16 +120,6 @@ function getDefaultStartDate() {
 
 function getDefaultEndDate() {
   return getToday();
-}
-
-function getMonthStart() {
-  const d = new Date();
-  return formatLocalDate(new Date(d.getFullYear(), d.getMonth(), 1));
-}
-
-function getMonthEnd() {
-  const d = new Date();
-  return formatLocalDate(new Date(d.getFullYear(), d.getMonth() + 1, 0));
 }
 
 function getDateRange(start, end) {
@@ -361,13 +352,27 @@ function App() {
   const [manageStatus, setManageStatus] = useState("정상");
   const [manageRows, setManageRows] = useState([]);
 
-  const factoryOptions = useMemo(
-    () => ["전체", ...factories.map((f) => f.실제공장)],
-    [factories]
-  );
+  const publicFactoryOptions = useMemo(() => {
+    const names = factories
+      .map((f) => f.실제공장)
+      .filter((name) => name && name !== UNCLASSIFIED_FACTORY);
+
+    return ["전체", ...names];
+  }, [factories]);
+
+  const manageFactoryOptions = useMemo(() => {
+    if (publicFactoryOptions.includes(UNCLASSIFIED_FACTORY)) {
+      return publicFactoryOptions;
+    }
+
+    return [...publicFactoryOptions, UNCLASSIFIED_FACTORY];
+  }, [publicFactoryOptions]);
 
   const actualFactoryOptions = useMemo(
-    () => factories.map((f) => f.실제공장),
+    () =>
+      factories
+        .map((f) => f.실제공장)
+        .filter((name) => name && name !== UNCLASSIFIED_FACTORY),
     [factories]
   );
 
@@ -581,15 +586,11 @@ function App() {
       });
 
       if (!result.ok) {
-        if (result.missingItems?.length) {
-          showToast(`기준표에 없는 품목: ${result.missingItems.join(", ")}`);
-        } else {
-          showToast(result.message || "저장 실패");
-        }
+        showToast(result.message || "저장 실패");
         return;
       }
 
-      showToast("불량건 저장 완료");
+      showToast(result.message || "불량건 저장 완료");
 
       setInputRows([
         { id: 1, item: "", qty: "" },
@@ -1147,7 +1148,7 @@ function App() {
             setFactory={setFactory}
             keyword={keyword}
             setKeyword={setKeyword}
-            factoryOptions={factoryOptions}
+            factoryOptions={publicFactoryOptions}
             onSearch={handleDashboardSearch}
             todayQty={todayQty}
             weekQty={weekQty}
@@ -1169,7 +1170,7 @@ function App() {
             setFactory={setFactory}
             keyword={keyword}
             setKeyword={setKeyword}
-            factoryOptions={factoryOptions}
+            factoryOptions={publicFactoryOptions}
             onSearch={handleDashboardSearch}
             periodSummary={periodSummary}
           />
@@ -1183,7 +1184,7 @@ function App() {
             setEndDate={setEndDate}
             factory={factory}
             setFactory={setFactory}
-            factoryOptions={factoryOptions}
+            factoryOptions={publicFactoryOptions}
             onSearch={handleDashboardSearch}
             periodRows={periodRows}
             onToast={showToast}
@@ -1241,7 +1242,7 @@ function App() {
             setFactory={setManageFactory}
             setKeyword={setManageKeyword}
             setStatus={setManageStatus}
-            factoryOptions={factoryOptions}
+            factoryOptions={manageFactoryOptions}
             itemNames={itemNames}
             rows={manageRows}
             onSearch={handleSearchManageRows}
@@ -1514,8 +1515,19 @@ function FactorySectionSummary({
 }) {
   const factorySections = useMemo(() => {
     const actualFactories = factoryOptions.filter((name) => name && name !== "전체");
+
+    const summaryFactories = Array.from(
+      new Set(
+        (periodSummary || [])
+          .map((row) => row.실제공장 || "미분류")
+          .filter(Boolean)
+      )
+    );
+
+    const allFactories = Array.from(new Set([...actualFactories, ...summaryFactories]));
+
     const targetFactories =
-      selectedFactory && selectedFactory !== "전체" ? [selectedFactory] : actualFactories;
+      selectedFactory && selectedFactory !== "전체" ? [selectedFactory] : allFactories;
 
     const grouped = {};
 
@@ -1551,8 +1563,16 @@ function FactorySectionSummary({
           total,
         };
       })
+      .filter((section) => section.total > 0)
       .sort((a, b) => {
-        if (selectedFactory !== "전체") return 0;
+        if (a.factoryName === UNCLASSIFIED_FACTORY && b.factoryName !== UNCLASSIFIED_FACTORY) {
+          return 1;
+        }
+
+        if (a.factoryName !== UNCLASSIFIED_FACTORY && b.factoryName === UNCLASSIFIED_FACTORY) {
+          return -1;
+        }
+
         if (b.total !== a.total) return b.total - a.total;
         return a.factoryName.localeCompare(b.factoryName, "ko");
       });
@@ -1639,11 +1659,13 @@ function FactorySectionSummary({
 }
 
 function FactorySummaryCard({ factoryName, rows, total }) {
+  const isUnclassified = factoryName === UNCLASSIFIED_FACTORY;
+
   return (
     <div
       style={{
-        background: "#fffdf8",
-        border: "1px solid #eadfcd",
+        background: isUnclassified ? "#fff7f4" : "#fffdf8",
+        border: isUnclassified ? "1px solid #efc7b8" : "1px solid #eadfcd",
         borderRadius: 18,
         overflow: "hidden",
         boxShadow: "0 14px 35px rgba(20, 24, 31, 0.08)",
@@ -1653,8 +1675,8 @@ function FactorySummaryCard({ factoryName, rows, total }) {
       <div
         style={{
           padding: "18px 20px",
-          background: "#fff8ec",
-          borderBottom: "1px solid #eadfcd",
+          background: isUnclassified ? "#fff0ea" : "#fff8ec",
+          borderBottom: isUnclassified ? "1px solid #efc7b8" : "1px solid #eadfcd",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -1666,7 +1688,7 @@ function FactorySummaryCard({ factoryName, rows, total }) {
             margin: 0,
             fontFamily: '"Noto Serif KR", serif',
             fontSize: 23,
-            color: "#0a2747",
+            color: isUnclassified ? "#a33a24" : "#0a2747",
             fontWeight: 900,
           }}
         >
@@ -1677,7 +1699,7 @@ function FactorySummaryCard({ factoryName, rows, total }) {
           style={{
             padding: "7px 13px",
             borderRadius: 999,
-            background: "#0a2747",
+            background: isUnclassified ? "#a33a24" : "#0a2747",
             color: "#f7e0b8",
             fontWeight: 900,
             fontSize: 14,
@@ -1689,6 +1711,24 @@ function FactorySummaryCard({ factoryName, rows, total }) {
       </div>
 
       <div style={{ padding: 18 }}>
+        {isUnclassified && (
+          <div
+            style={{
+              marginBottom: 12,
+              padding: "10px 12px",
+              borderRadius: 10,
+              background: "#fff",
+              border: "1px dashed #d58b73",
+              color: "#a33a24",
+              fontWeight: 800,
+              fontSize: 13,
+              lineHeight: 1.5,
+            }}
+          >
+            기준표에 없는 품목입니다. 불량내역관리에서 정확한 품목명으로 수정하면 정상 공장으로 재분류됩니다.
+          </div>
+        )}
+
         {rows.length === 0 ? (
           <div
             style={{
@@ -1715,7 +1755,7 @@ function FactorySummaryCard({ factoryName, rows, total }) {
                 {rows.map((row, index) => (
                   <tr key={`${factoryName}-${row.품목}-${index}`}>
                     <td style={{ textAlign: "left", fontWeight: 800 }}>{row.품목}</td>
-                    <td style={{ fontWeight: 900, color: "#0a2747" }}>
+                    <td style={{ fontWeight: 900, color: isUnclassified ? "#a33a24" : "#0a2747" }}>
                       {Number(row.수량 || 0).toLocaleString()}장
                     </td>
                   </tr>
@@ -1764,6 +1804,7 @@ function WeeklyPage({
 
       if (!item || !dateColumns.includes(date)) return;
       if (factory !== "전체" && factoryName !== factory) return;
+      if (factoryName === UNCLASSIFIED_FACTORY) return;
 
       if (!map[factoryName]) {
         map[factoryName] = {};
@@ -2766,9 +2807,15 @@ function DefectManagePage({
                   };
                   const isDeleted = row.상태 === "삭제";
                   const isSelected = selectedSet.has(String(row.등록번호));
+                  const isUnclassified = row.실제공장 === UNCLASSIFIED_FACTORY;
 
                   return (
-                    <tr key={row.등록번호}>
+                    <tr
+                      key={row.등록번호}
+                      style={{
+                        background: isUnclassified ? "#fff7f4" : undefined,
+                      }}
+                    >
                       <td>
                         <input
                           type="checkbox"
@@ -2800,7 +2847,14 @@ function DefectManagePage({
                       </td>
 
                       <td>
-                        <div style={{ fontWeight: 800 }}>{row.실제공장}</div>
+                        <div
+                          style={{
+                            fontWeight: 800,
+                            color: isUnclassified ? "#a33a24" : undefined,
+                          }}
+                        >
+                          {row.실제공장}
+                        </div>
                         <div style={{ fontSize: 12, color: "#8c8172" }}>
                           {row.결제그룹}
                         </div>
