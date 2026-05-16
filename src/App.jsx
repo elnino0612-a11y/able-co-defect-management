@@ -1519,7 +1519,7 @@ function FactorySectionSummary({
     const summaryFactories = Array.from(
       new Set(
         (periodSummary || [])
-          .map((row) => row.실제공장 || "미분류")
+          .map((row) => String(row.실제공장 || "미분류").trim())
           .filter(Boolean)
       )
     );
@@ -1536,12 +1536,15 @@ function FactorySectionSummary({
     });
 
     (periodSummary || []).forEach((row) => {
-      const factoryName = row.실제공장 || "미분류";
-      const itemName = row.품목 || "-";
+      const factoryName = String(row.실제공장 || "미분류").trim();
+      const itemName = String(row.품목 || "-").trim();
       const qty = Number(row.합계 || 0);
 
       if (selectedFactory !== "전체" && factoryName !== selectedFactory) return;
-      if (!grouped[factoryName]) grouped[factoryName] = [];
+
+      if (!grouped[factoryName]) {
+        grouped[factoryName] = [];
+      }
 
       grouped[factoryName].push({
         품목: itemName,
@@ -1563,7 +1566,6 @@ function FactorySectionSummary({
           total,
         };
       })
-      .filter((section) => section.total > 0)
       .sort((a, b) => {
         if (a.factoryName === UNCLASSIFIED_FACTORY && b.factoryName !== UNCLASSIFIED_FACTORY) {
           return 1;
@@ -1578,10 +1580,12 @@ function FactorySectionSummary({
       });
   }, [factoryOptions, periodSummary, selectedFactory]);
 
+  const visibleSections = factorySections.filter((section) => section.total > 0);
+
   const topItem = useMemo(() => {
     const itemMap = {};
 
-    factorySections.forEach((section) => {
+    visibleSections.forEach((section) => {
       section.rows.forEach((row) => {
         const itemName = row.품목 || "-";
         const qty = Number(row.수량 || 0);
@@ -1603,14 +1607,14 @@ function FactorySectionSummary({
       .sort((a, b) => b.qty - a.qty);
 
     return sortedItems[0] || null;
-  }, [factorySections]);
+  }, [visibleSections]);
 
-  const totalQty = factorySections.reduce((sum, section) => sum + section.total, 0);
-  const activeFactoryCount = factorySections.filter((section) => section.total > 0).length;
-  const totalFactoryCount = factorySections.length;
+  const totalQty = visibleSections.reduce((sum, section) => sum + section.total, 0);
+  const activeFactoryCount = visibleSections.length;
+  const totalFactoryCount = visibleSections.length;
 
   return (
-    <>
+    <div style={{ marginTop: 22 }}>
       <div className="kpi-grid">
         <KpiCard title="기간 내 전체 불량" value={totalQty} />
         <KpiTextCard title="표시 공장 수" value={`${totalFactoryCount.toLocaleString()}곳`} />
@@ -1632,29 +1636,41 @@ function FactorySectionSummary({
           </div>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(310px, 100%), 1fr))",
-            gap: 18,
-            width: "100%",
-          }}
-        >
-          {factorySections.length === 0 ? (
-            <div className="empty-panel">조회된 공장별 불량 내역이 없습니다.</div>
-          ) : (
-            factorySections.map((section) => (
+        {visibleSections.length === 0 ? (
+          <div
+            style={{
+              padding: "36px 18px",
+              borderRadius: 14,
+              background: "#fbf7ef",
+              border: "1px dashed #d8c7ac",
+              color: "#8c8172",
+              fontWeight: 900,
+              textAlign: "center",
+            }}
+          >
+            조회된 공장별 불량 내역이 없습니다. 상단에서 기간을 확인한 뒤 최신 조회를 눌러주세요.
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(min(310px, 100%), 1fr))",
+              gap: 18,
+              width: "100%",
+            }}
+          >
+            {visibleSections.map((section) => (
               <FactorySummaryCard
                 key={section.factoryName}
                 factoryName={section.factoryName}
                 rows={section.rows}
                 total={section.total}
               />
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
 }
 
