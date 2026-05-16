@@ -1312,6 +1312,56 @@ function DashboardPage(props) {
   );
 }
 
+function TotalPage({
+  startDate,
+  endDate,
+  setStartDate,
+  setEndDate,
+  factory,
+  setFactory,
+  keyword,
+  setKeyword,
+  factoryOptions,
+  onSearch,
+  periodSummary,
+}) {
+  return (
+    <section className="page">
+      <PageTitle title="전체 불량현황" subtitle="실제공장 기준 전체 불량 품목 수량 조회" />
+
+      <SearchBox
+        startDate={startDate}
+        endDate={endDate}
+        setStartDate={setStartDate}
+        setEndDate={setEndDate}
+        factory={factory}
+        setFactory={setFactory}
+        keyword={keyword}
+        setKeyword={setKeyword}
+        factoryOptions={factoryOptions}
+        onSearch={onSearch}
+      />
+
+      <div
+        style={{
+          display: "block",
+          width: "100%",
+          marginTop: 24,
+          padding: 0,
+        }}
+      >
+        <FactorySectionSummary
+          startDate={startDate}
+          endDate={endDate}
+          selectedFactory={factory}
+          factoryOptions={factoryOptions}
+          periodSummary={periodSummary}
+        />
+      </div>
+    </section>
+  );
+}
+
 function SearchBox({
   startDate,
   endDate,
@@ -1465,47 +1515,6 @@ function ItemRankTable({ title, rows }) {
   );
 }
 
-function TotalPage({
-  startDate,
-  endDate,
-  setStartDate,
-  setEndDate,
-  factory,
-  setFactory,
-  keyword,
-  setKeyword,
-  factoryOptions,
-  onSearch,
-  periodSummary,
-}) {
-  return (
-    <section className="page">
-      <PageTitle title="전체 불량현황" subtitle="실제공장 기준 전체 불량 품목 수량 조회" />
-
-      <SearchBox
-        startDate={startDate}
-        endDate={endDate}
-        setStartDate={setStartDate}
-        setEndDate={setEndDate}
-        factory={factory}
-        setFactory={setFactory}
-        keyword={keyword}
-        setKeyword={setKeyword}
-        factoryOptions={factoryOptions}
-        onSearch={onSearch}
-      />
-
-      <FactorySectionSummary
-        startDate={startDate}
-        endDate={endDate}
-        selectedFactory={factory}
-        factoryOptions={factoryOptions}
-        periodSummary={periodSummary}
-      />
-    </section>
-  );
-}
-
 function FactorySectionSummary({
   startDate,
   endDate,
@@ -1513,7 +1522,7 @@ function FactorySectionSummary({
   factoryOptions,
   periodSummary,
 }) {
-  const factorySections = useMemo(() => {
+  const visibleSections = useMemo(() => {
     const actualFactories = factoryOptions.filter((name) => name && name !== "전체");
 
     const summaryFactories = Array.from(
@@ -1566,6 +1575,7 @@ function FactorySectionSummary({
           total,
         };
       })
+      .filter((section) => section.total > 0)
       .sort((a, b) => {
         if (a.factoryName === UNCLASSIFIED_FACTORY && b.factoryName !== UNCLASSIFIED_FACTORY) {
           return 1;
@@ -1579,8 +1589,6 @@ function FactorySectionSummary({
         return a.factoryName.localeCompare(b.factoryName, "ko");
       });
   }, [factoryOptions, periodSummary, selectedFactory]);
-
-  const visibleSections = factorySections.filter((section) => section.total > 0);
 
   const topItem = useMemo(() => {
     const itemMap = {};
@@ -1610,22 +1618,28 @@ function FactorySectionSummary({
   }, [visibleSections]);
 
   const totalQty = visibleSections.reduce((sum, section) => sum + section.total, 0);
-  const activeFactoryCount = visibleSections.length;
-  const totalFactoryCount = visibleSections.length;
 
   return (
-    <div style={{ marginTop: 22 }}>
+    <div style={{ display: "block", width: "100%" }}>
       <div className="kpi-grid">
         <KpiCard title="기간 내 전체 불량" value={totalQty} />
-        <KpiTextCard title="표시 공장 수" value={`${totalFactoryCount.toLocaleString()}곳`} />
-        <KpiTextCard title="불량 발생 공장" value={`${activeFactoryCount.toLocaleString()}곳`} />
+        <KpiTextCard title="표시 공장 수" value={`${visibleSections.length.toLocaleString()}곳`} />
+        <KpiTextCard title="불량 발생 공장" value={`${visibleSections.length.toLocaleString()}곳`} />
         <KpiTextCard
           title="최다 불량 품목"
           value={topItem ? `${topItem.itemName} ${topItem.qty.toLocaleString()}장` : "-"}
         />
       </div>
 
-      <div className="panel">
+      <div
+        className="panel"
+        style={{
+          display: "block",
+          visibility: "visible",
+          opacity: 1,
+          minHeight: 180,
+        }}
+      >
         <div className="panel-head">
           <div>
             <h3>실제공장별 불량 품목 수량</h3>
@@ -1639,6 +1653,7 @@ function FactorySectionSummary({
         {visibleSections.length === 0 ? (
           <div
             style={{
+              display: "block",
               padding: "36px 18px",
               borderRadius: 14,
               background: "#fbf7ef",
@@ -1745,41 +1760,26 @@ function FactorySummaryCard({ factoryName, rows, total }) {
           </div>
         )}
 
-        {rows.length === 0 ? (
-          <div
-            style={{
-              padding: "34px 12px",
-              textAlign: "center",
-              color: "#8e8375",
-              fontWeight: 800,
-              background: "#fbf7ef",
-              borderRadius: 12,
-            }}
-          >
-            조회된 불량 품목이 없습니다.
-          </div>
-        ) : (
-          <div className="table-wrap" style={{ borderRadius: 10 }}>
-            <table style={{ minWidth: 260 }}>
-              <thead>
-                <tr>
-                  <th>품목</th>
-                  <th>수량</th>
+        <div className="table-wrap" style={{ borderRadius: 10 }}>
+          <table style={{ minWidth: 260 }}>
+            <thead>
+              <tr>
+                <th>품목</th>
+                <th>수량</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={`${factoryName}-${row.품목}-${index}`}>
+                  <td style={{ textAlign: "left", fontWeight: 800 }}>{row.품목}</td>
+                  <td style={{ fontWeight: 900, color: isUnclassified ? "#a33a24" : "#0a2747" }}>
+                    {Number(row.수량 || 0).toLocaleString()}장
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, index) => (
-                  <tr key={`${factoryName}-${row.품목}-${index}`}>
-                    <td style={{ textAlign: "left", fontWeight: 800 }}>{row.품목}</td>
-                    <td style={{ fontWeight: 900, color: isUnclassified ? "#a33a24" : "#0a2747" }}>
-                      {Number(row.수량 || 0).toLocaleString()}장
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         <p
           style={{
