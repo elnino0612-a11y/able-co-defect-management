@@ -346,8 +346,8 @@ function App() {
     { id: 5, item: "", qty: "" },
   ]);
 
-  const [manageStartDate, setManageStartDate] = useState(getDefaultStartDate());
-  const [manageEndDate, setManageEndDate] = useState(getDefaultEndDate());
+  const [manageStartDate, setManageStartDate] = useState(getToday());
+  const [manageEndDate, setManageEndDate] = useState(getToday());
   const [manageFactory, setManageFactory] = useState("전체");
   const [manageKeyword, setManageKeyword] = useState("");
   const [manageStatus, setManageStatus] = useState("정상");
