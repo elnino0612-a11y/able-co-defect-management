@@ -115,7 +115,8 @@ function getRecent7Start() {
 }
 
 function getDefaultStartDate() {
-  return getRecent7Start();
+  return getToday();
+}
 }
 
 function getDefaultEndDate() {
