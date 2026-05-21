@@ -18,6 +18,7 @@ const PUBLIC_MENU = [
 
 const ADMIN_MENU = [
   { key: "input", label: "불량건 입력" },
+  { key: "repairInput", label: "수선분 입력" },
   { key: "defectManage", label: "불량내역관리" },
   { key: "itemFactory", label: "품목공장관리" },
   { key: "history", label: "공장변경이력" },
@@ -1289,6 +1290,12 @@ function App() {
                     handleSearchManageRows();
                   }, 0);
                 }
+
+                if (menu.key === "repairInput" && repairSummary.repairRows.length === 0) {
+                  setTimeout(() => {
+                    handleRepairSearch();
+                  }, 0);
+                }
               }}
             >
               {menu.label}
@@ -1390,7 +1397,22 @@ function App() {
 
         {page === "repair" && (
           <RepairPage
-            isAdmin={isAdmin}
+            startDate={repairStart}
+            endDate={repairEnd}
+            factory={repairFactory}
+            keyword={repairKeyword}
+            setStartDate={setRepairStart}
+            setEndDate={setRepairEnd}
+            setFactory={setRepairFactory}
+            setKeyword={setRepairKeyword}
+            factoryOptions={publicFactoryOptions}
+            summary={repairSummary}
+            onSearch={() => handleRepairSearch()}
+          />
+        )}
+
+        {page === "repairInput" && isAdmin && (
+          <RepairInputPage
             startDate={repairStart}
             endDate={repairEnd}
             factory={repairFactory}
@@ -1975,7 +1997,6 @@ function FactorySummaryCard({ factoryName, rows, total }) {
 }
 
 function RepairPage({
-  isAdmin,
   startDate,
   endDate,
   factory,
@@ -1985,43 +2006,14 @@ function RepairPage({
   setFactory,
   setKeyword,
   factoryOptions,
-  actualFactoryOptions,
-  itemNames,
   summary,
   onSearch,
-  inputDate,
-  setInputDate,
-  inputRows,
-  updateInputRow,
-  addInputRow,
-  removeInputRow,
-  onSave,
-  onDelete,
 }) {
   const repairRateText = `${Number(summary.repairRate || 0).toLocaleString()}%`;
 
-  const inputPreview = useMemo(() => {
-    const rows = Array.isArray(inputRows) ? inputRows : [];
-    const validRows = rows
-      .map((row) => ({
-        factory: String(row.factory || "").trim(),
-        item: normalizeItemInput(row.item),
-        qty: Number(row.qty || 0),
-        memo: String(row.memo || "").trim(),
-      }))
-      .filter((row) => row.factory && row.item && row.qty > 0);
-
-    const totalQty = validRows.reduce((sum, row) => sum + Number(row.qty || 0), 0);
-
-    return {
-      count: validRows.length,
-      totalQty,
-    };
-  }, [inputRows]);
-
   return (
     <section className="page">
-      <PageTitle title="수선분내역" subtitle="기간별 총 불량수량 / 수선입고수량 / 남은 불량수량 관리" />
+      <PageTitle title="수선분내역" subtitle="기간별 총 불량수량 / 수선입고수량 / 남은 불량수량 조회" />
 
       <div className="search-card compact no-print">
         <div className="field">
@@ -2085,134 +2077,18 @@ function RepairPage({
         />
       </div>
 
-      {isAdmin && (
-        <div className="panel">
-          <div className="panel-head">
-            <div>
-              <h3>수선분 다중입력</h3>
-              <p>공장에서 수선되어 돌아온 수량을 여러 줄로 한 번에 저장합니다.</p>
-            </div>
-            <div
-              style={{
-                padding: "8px 14px",
-                borderRadius: 999,
-                background: "#fff8ec",
-                border: "1px solid #eadfcd",
-                color: "#0a2747",
-                fontWeight: 900,
-                whiteSpace: "nowrap",
-              }}
-            >
-              입력 {inputPreview.count.toLocaleString()}건 / {inputPreview.totalQty.toLocaleString()}장
-            </div>
-          </div>
-
-          <div className="field date-field" style={{ maxWidth: 260, marginBottom: 16 }}>
-            <label>입고일</label>
-            <input type="date" value={inputDate} onChange={(e) => setInputDate(e.target.value)} />
-          </div>
-
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>No</th>
-                  <th>공장</th>
-                  <th>품목</th>
-                  <th>수선수량</th>
-                  <th>비고</th>
-                  <th>관리</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(inputRows || []).map((row, index) => (
-                  <tr key={row.id}>
-                    <td>{index + 1}</td>
-                    <td>
-                      <select
-                        value={row.factory || ""}
-                        onChange={(e) => updateInputRow(row.id, "factory", e.target.value)}
-                      >
-                        {actualFactoryOptions.map((name) => (
-                          <option key={name} value={name}>
-                            {name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <AutocompleteInput
-                        value={row.item || ""}
-                        onChange={(v) => updateInputRow(row.id, "item", normalizeItemInput(v))}
-                        options={itemNames}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        min="1"
-                        value={row.qty || ""}
-                        onChange={(e) => updateInputRow(row.id, "qty", e.target.value)}
-                        placeholder="수량"
-                      />
-                    </td>
-                    <td>
-                      <input
-                        value={row.memo || ""}
-                        onChange={(e) => updateInputRow(row.id, "memo", e.target.value)}
-                        placeholder="예: 조이 수선입고"
-                      />
-                    </td>
-                    <td>
-                      <button
-                        className="delete-btn"
-                        type="button"
-                        onClick={() => removeInputRow(row.id)}
-                        style={{ height: 40, fontSize: 14 }}
-                      >
-                        삭제
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-              flexWrap: "wrap",
-              marginTop: 16,
-            }}
-          >
-            <button className="line-btn" type="button" onClick={addInputRow}>
-              + 행 추가
-            </button>
-            <button className="search-btn" type="button" onClick={onSave}>
-              입력한 수선분 저장
-            </button>
-          </div>
-        </div>
-      )}
-
-      {!isAdmin && (
-        <div
-          className="panel"
-          style={{
-            padding: "24px 22px",
-            borderStyle: "dashed",
-            color: "#8c8172",
-            fontWeight: 900,
-            textAlign: "center",
-          }}
-        >
-          수선분 입력은 관리자모드에서만 가능합니다. 조회는 현재 화면에서 계속 확인할 수 있습니다.
-        </div>
-      )}
+      <div
+        className="panel"
+        style={{
+          padding: "20px 22px",
+          borderStyle: "dashed",
+          color: "#8c8172",
+          fontWeight: 900,
+          textAlign: "center",
+        }}
+      >
+        수선분 입력은 관리자 메뉴의 <strong style={{ color: "#0a2747" }}>수선분 입력</strong>에서 따로 진행합니다.
+      </div>
 
       <div className="panel">
         <div className="panel-head">
@@ -2220,11 +2096,234 @@ function RepairPage({
             <h3>
               수선분 입고내역 ({formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)})
             </h3>
-            <p>삭제는 실제 삭제가 아니라 삭제상태로 처리됩니다.</p>
+            <p>조회 전용 화면입니다. 삭제처리는 관리자 메뉴의 수선분 입력에서 가능합니다.</p>
           </div>
         </div>
 
-        <RepairRowsTable rows={summary.repairRows || []} isAdmin={isAdmin} onDelete={onDelete} />
+        <RepairRowsTable rows={summary.repairRows || []} isAdmin={false} onDelete={() => {}} />
+      </div>
+    </section>
+  );
+}
+
+function RepairInputPage({
+  startDate,
+  endDate,
+  factory,
+  keyword,
+  setStartDate,
+  setEndDate,
+  setFactory,
+  setKeyword,
+  factoryOptions,
+  actualFactoryOptions,
+  itemNames,
+  summary,
+  onSearch,
+  inputDate,
+  setInputDate,
+  inputRows,
+  updateInputRow,
+  addInputRow,
+  removeInputRow,
+  onSave,
+  onDelete,
+}) {
+  const inputPreview = useMemo(() => {
+    const rows = Array.isArray(inputRows) ? inputRows : [];
+    const validRows = rows
+      .map((row) => ({
+        factory: String(row.factory || "").trim(),
+        item: normalizeItemInput(row.item),
+        qty: Number(row.qty || 0),
+        memo: String(row.memo || "").trim(),
+      }))
+      .filter((row) => row.factory && row.item && row.qty > 0);
+
+    const totalQty = validRows.reduce((sum, row) => sum + Number(row.qty || 0), 0);
+
+    return {
+      count: validRows.length,
+      totalQty,
+    };
+  }, [inputRows]);
+
+  return (
+    <section className="page">
+      <PageTitle title="수선분 입력" subtitle="공장에서 수선되어 돌아온 수량을 여러 줄로 한 번에 저장" />
+
+      <div className="panel">
+        <div className="panel-head">
+          <div>
+            <h3>수선분 다중입력</h3>
+            <p>공장에서 수선되어 돌아온 수량만 입력합니다. 입력일은 한 번에 저장되는 모든 행에 동일하게 적용됩니다.</p>
+          </div>
+          <div
+            style={{
+              padding: "8px 14px",
+              borderRadius: 999,
+              background: "#fff8ec",
+              border: "1px solid #eadfcd",
+              color: "#0a2747",
+              fontWeight: 900,
+              whiteSpace: "nowrap",
+            }}
+          >
+            입력 {inputPreview.count.toLocaleString()}건 / {inputPreview.totalQty.toLocaleString()}장
+          </div>
+        </div>
+
+        <div className="field date-field" style={{ maxWidth: 260, marginBottom: 16 }}>
+          <label>입고일</label>
+          <input type="date" value={inputDate} onChange={(e) => setInputDate(e.target.value)} />
+        </div>
+
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>No</th>
+                <th>공장</th>
+                <th>품목</th>
+                <th>수선수량</th>
+                <th>비고</th>
+                <th>관리</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(inputRows || []).map((row, index) => (
+                <tr key={row.id}>
+                  <td>{index + 1}</td>
+                  <td>
+                    <select
+                      value={row.factory || ""}
+                      onChange={(e) => updateInputRow(row.id, "factory", e.target.value)}
+                    >
+                      {actualFactoryOptions.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <AutocompleteInput
+                      value={row.item || ""}
+                      onChange={(v) => updateInputRow(row.id, "item", normalizeItemInput(v))}
+                      options={itemNames}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      min="1"
+                      value={row.qty || ""}
+                      onChange={(e) => updateInputRow(row.id, "qty", e.target.value)}
+                      placeholder="수량"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={row.memo || ""}
+                      onChange={(e) => updateInputRow(row.id, "memo", e.target.value)}
+                      placeholder="예: 조이 수선입고"
+                    />
+                  </td>
+                  <td>
+                    <button
+                      className="delete-btn"
+                      type="button"
+                      onClick={() => removeInputRow(row.id)}
+                      style={{ height: 40, fontSize: 14 }}
+                    >
+                      삭제
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            marginTop: 16,
+          }}
+        >
+          <button className="line-btn" type="button" onClick={addInputRow}>
+            + 행 추가
+          </button>
+          <button className="search-btn" type="button" onClick={onSave}>
+            입력한 수선분 저장
+          </button>
+        </div>
+      </div>
+
+      <div className="search-card compact no-print">
+        <div className="field">
+          <label>시작일</label>
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        </div>
+
+        <div className="field">
+          <label>종료일</label>
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        </div>
+
+        <div className="field">
+          <label>공장</label>
+          <select value={factory} onChange={(e) => setFactory(e.target.value)}>
+            {factoryOptions.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button className="search-btn" onClick={onSearch}>
+          입고내역 조회
+        </button>
+
+        <div className="field" style={{ gridColumn: "1 / -1" }}>
+          <label>품목 검색</label>
+          <input
+            value={keyword}
+            onChange={(e) => setKeyword(normalizeItemInput(e.target.value))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                onSearch();
+              }
+            }}
+            placeholder="품목명을 입력하세요"
+          />
+        </div>
+      </div>
+
+      <div className="kpi-grid">
+        <KpiCard title="기간 내 총 불량수량" value={summary.totalDefectQty} accent="#2467e8" />
+        <KpiCard title="기간 내 수선입고수량" value={summary.totalRepairQty} accent="#16813a" />
+        <KpiCard title="남은 불량수량" value={summary.remainingQty} accent="#f04b23" />
+        <KpiTextCard title="수선 처리율" value={`${Number(summary.repairRate || 0).toLocaleString()}%`} accent="#7c3fc9" />
+      </div>
+
+      <div className="panel">
+        <div className="panel-head">
+          <div>
+            <h3>
+              수선분 입고내역 ({formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)})
+            </h3>
+            <p>잘못 입력한 수선분은 삭제상태로 처리됩니다.</p>
+          </div>
+        </div>
+
+        <RepairRowsTable rows={summary.repairRows || []} isAdmin={true} onDelete={onDelete} />
       </div>
     </section>
   );
