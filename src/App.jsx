@@ -380,6 +380,21 @@ function App() {
     [items]
   );
 
+  const itemFactoryMap = useMemo(() => {
+    const map = {};
+
+    items.forEach((item) => {
+      const itemName = normalizeItemInput(item.품목);
+      const factoryName = String(item.실제공장 || "").trim();
+
+      if (itemName && factoryName) {
+        map[itemName] = factoryName;
+      }
+    });
+
+    return map;
+  }, [items]);
+
   const mergedPreview = useMemo(() => {
     const map = {};
 
@@ -424,15 +439,26 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (actualFactoryOptions.length === 0) return;
-
     setRepairInputRows((prev) =>
-      prev.map((row) => ({
-        ...row,
-        factory: row.factory || actualFactoryOptions[0],
-      }))
+      prev.map((row) => {
+        const itemName = normalizeItemInput(row.item);
+
+        if (!itemName) {
+          return {
+            ...row,
+            item: "",
+            factory: "",
+          };
+        }
+
+        return {
+          ...row,
+          item: itemName,
+          factory: itemFactoryMap[itemName] || "",
+        };
+      })
     );
-  }, [actualFactoryOptions]);
+  }, [itemFactoryMap]);
 
   async function loadInitialData() {
     try {
@@ -830,14 +856,24 @@ function App() {
 
   function updateRepairInputRow(id, field, value) {
     setRepairInputRows((prev) =>
-      prev.map((row) =>
-        row.id === id
-          ? {
-              ...row,
-              [field]: field === "item" ? normalizeItemInput(value) : value,
-            }
-          : row
-      )
+      prev.map((row) => {
+        if (row.id !== id) return row;
+
+        if (field === "item") {
+          const itemName = normalizeItemInput(value);
+
+          return {
+            ...row,
+            item: itemName,
+            factory: itemFactoryMap[itemName] || "",
+          };
+        }
+
+        return {
+          ...row,
+          [field]: value,
+        };
+      })
     );
   }
 
@@ -846,7 +882,7 @@ function App() {
       ...prev,
       {
         id: Date.now() + Math.random(),
-        factory: actualFactoryOptions[0] || "",
+        factory: "",
         item: "",
         qty: "",
         memo: "",
@@ -860,7 +896,7 @@ function App() {
         return [
           {
             id: Date.now(),
-            factory: actualFactoryOptions[0] || "",
+            factory: "",
             item: "",
             qty: "",
             memo: "",
@@ -903,7 +939,7 @@ function App() {
       });
 
       if (invalidRowIndex !== -1) {
-        showToast(`${invalidRowIndex + 1}번째 수선분 입력행의 공장/품목/수량을 확인해주세요.`);
+        showToast(`${invalidRowIndex + 1}번째 수선분 입력행의 품목/자동공장/수량을 확인해주세요. 품목공장기준표에 없는 품목은 먼저 등록해야 합니다.`);
         return;
       }
 
@@ -923,9 +959,9 @@ function App() {
 
       showToast(result.message || `${rows.length}건 수선분 내역 저장 완료`);
       setRepairInputRows([
-        { id: Date.now() + 1, factory: actualFactoryOptions[0] || "", item: "", qty: "", memo: "" },
-        { id: Date.now() + 2, factory: actualFactoryOptions[0] || "", item: "", qty: "", memo: "" },
-        { id: Date.now() + 3, factory: actualFactoryOptions[0] || "", item: "", qty: "", memo: "" },
+        { id: Date.now() + 1, factory: "", item: "", qty: "", memo: "" },
+        { id: Date.now() + 2, factory: "", item: "", qty: "", memo: "" },
+        { id: Date.now() + 3, factory: "", item: "", qty: "", memo: "" },
       ]);
 
       await handleRepairSearch({
@@ -1422,7 +1458,6 @@ function App() {
             setFactory={setRepairFactory}
             setKeyword={setRepairKeyword}
             factoryOptions={publicFactoryOptions}
-            actualFactoryOptions={actualFactoryOptions}
             itemNames={itemNames}
             summary={repairSummary}
             onSearch={() => handleRepairSearch()}
@@ -2116,7 +2151,6 @@ function RepairInputPage({
   setFactory,
   setKeyword,
   factoryOptions,
-  actualFactoryOptions,
   itemNames,
   summary,
   onSearch,
@@ -2156,7 +2190,7 @@ function RepairInputPage({
         <div className="panel-head">
           <div>
             <h3>수선분 다중입력</h3>
-            <p>공장에서 수선되어 돌아온 수량만 입력합니다. 입력일은 한 번에 저장되는 모든 행에 동일하게 적용됩니다.</p>
+            <p>품목을 입력하면 품목공장기준표 기준으로 실제공장이 자동 지정됩니다. 입력일은 모든 행에 동일하게 적용됩니다.</p>
           </div>
           <div
             style={{
@@ -2234,26 +2268,38 @@ function RepairInputPage({
                 }}
               >
                 <div className="field">
-                  <label>공장</label>
-                  <select
-                    value={row.factory || ""}
-                    onChange={(e) => updateInputRow(row.id, "factory", e.target.value)}
-                  >
-                    {actualFactoryOptions.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="field">
                   <label>품목</label>
                   <AutocompleteInput
                     value={row.item || ""}
                     onChange={(v) => updateInputRow(row.id, "item", normalizeItemInput(v))}
                     options={itemNames}
                   />
+                </div>
+
+                <div className="field">
+                  <label>자동공장</label>
+                  <div
+                    style={{
+                      minHeight: 48,
+                      display: "flex",
+                      alignItems: "center",
+                      padding: "0 14px",
+                      borderRadius: 12,
+                      border: row.item && !row.factory ? "1px solid #ef9a8a" : "1px solid #eadfcd",
+                      background: row.item && !row.factory ? "#fff3f0" : "#fbf7ef",
+                      color: row.item && !row.factory ? "#a33a24" : "#0a2747",
+                      fontWeight: 900,
+                    }}
+                  >
+                    {!row.item
+                      ? "품목 입력 시 자동 표시"
+                      : row.factory || "공장 미등록"}
+                  </div>
+                  {row.item && !row.factory && (
+                    <p style={{ margin: "7px 0 0", color: "#a33a24", fontSize: 12, fontWeight: 800 }}>
+                      품목공장기준표에 없는 품목입니다. 먼저 품목공장관리에 등록해주세요.
+                    </p>
+                  )}
                 </div>
 
                 <div className="field">
