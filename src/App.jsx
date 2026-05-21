@@ -2178,71 +2178,106 @@ function RepairInputPage({
           <input type="date" value={inputDate} onChange={(e) => setInputDate(e.target.value)} />
         </div>
 
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>No</th>
-                <th>공장</th>
-                <th>품목</th>
-                <th>수선수량</th>
-                <th>비고</th>
-                <th>관리</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(inputRows || []).map((row, index) => (
-                <tr key={row.id}>
-                  <td>{index + 1}</td>
-                  <td>
-                    <select
-                      value={row.factory || ""}
-                      onChange={(e) => updateInputRow(row.id, "factory", e.target.value)}
-                    >
-                      {actualFactoryOptions.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <AutocompleteInput
-                      value={row.item || ""}
-                      onChange={(v) => updateInputRow(row.id, "item", normalizeItemInput(v))}
-                      options={itemNames}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      min="1"
-                      value={row.qty || ""}
-                      onChange={(e) => updateInputRow(row.id, "qty", e.target.value)}
-                      placeholder="수량"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={row.memo || ""}
-                      onChange={(e) => updateInputRow(row.id, "memo", e.target.value)}
-                      placeholder="예: 조이 수선입고"
-                    />
-                  </td>
-                  <td>
-                    <button
-                      className="delete-btn"
-                      type="button"
-                      onClick={() => removeInputRow(row.id)}
-                      style={{ height: 40, fontSize: 14 }}
-                    >
-                      삭제
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div
+          style={{
+            display: "grid",
+            gap: 14,
+          }}
+        >
+          {(inputRows || []).map((row, index) => (
+            <div
+              key={row.id}
+              style={{
+                border: "1px solid #eadfcd",
+                background: "#fffdf8",
+                borderRadius: 16,
+                padding: 16,
+                boxShadow: "0 10px 26px rgba(20, 24, 31, 0.06)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginBottom: 14,
+                  paddingBottom: 12,
+                  borderBottom: "1px solid #f0e5d4",
+                }}
+              >
+                <strong
+                  style={{
+                    color: "#0a2747",
+                    fontSize: 16,
+                    fontWeight: 900,
+                  }}
+                >
+                  수선분 {index + 1}
+                </strong>
+
+                <button
+                  className="delete-btn"
+                  type="button"
+                  onClick={() => removeInputRow(row.id)}
+                  style={{ height: 40, fontSize: 14 }}
+                >
+                  삭제
+                </button>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))",
+                  gap: 12,
+                }}
+              >
+                <div className="field">
+                  <label>공장</label>
+                  <select
+                    value={row.factory || ""}
+                    onChange={(e) => updateInputRow(row.id, "factory", e.target.value)}
+                  >
+                    {actualFactoryOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field">
+                  <label>품목</label>
+                  <AutocompleteInput
+                    value={row.item || ""}
+                    onChange={(v) => updateInputRow(row.id, "item", normalizeItemInput(v))}
+                    options={itemNames}
+                  />
+                </div>
+
+                <div className="field">
+                  <label>수선수량</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={row.qty || ""}
+                    onChange={(e) => updateInputRow(row.id, "qty", e.target.value)}
+                    placeholder="수량"
+                  />
+                </div>
+
+                <div className="field">
+                  <label>비고</label>
+                  <input
+                    value={row.memo || ""}
+                    onChange={(e) => updateInputRow(row.id, "memo", e.target.value)}
+                    placeholder="예: 조이 수선입고"
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
 
         <div
@@ -3168,7 +3203,20 @@ function AutocompleteInput({ value, onChange, options, inputRef, onEnter }) {
       />
 
       {open && filtered.length > 0 && (
-        <div className="auto-list" ref={listRef}>
+        <div
+          className="auto-list"
+          ref={listRef}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "stretch",
+            gap: 0,
+            maxHeight: 260,
+            overflowY: "auto",
+            overflowX: "hidden",
+            whiteSpace: "normal",
+          }}
+        >
           {filtered.map((item, index) => (
             <button
               key={item}
@@ -3178,6 +3226,14 @@ function AutocompleteInput({ value, onChange, options, inputRef, onEnter }) {
               onMouseEnter={() => setHighlightIndex(index)}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => selectItem(item)}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                whiteSpace: "normal",
+                wordBreak: "keep-all",
+                flex: "0 0 auto",
+              }}
             >
               {item}
             </button>
