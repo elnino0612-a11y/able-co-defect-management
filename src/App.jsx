@@ -13,6 +13,7 @@ const PUBLIC_MENU = [
   { key: "total", label: "전체 불량현황" },
   { key: "weekly", label: "공장별 불량내역" },
   { key: "payment", label: "원단결제용 불량내역" },
+  { key: "repair", label: "수선분내역" },
 ];
 
 const ADMIN_MENU = [
@@ -97,11 +98,15 @@ function formatTableCell(value, columnName) {
     return formatKoreanDateTime(value);
   }
 
-  if (col === "접수일" || col === "수정일" || col === "삭제일" || col.endsWith("일")) {
+  if (col === "접수일" || col === "입고일" || col === "수정일" || col === "삭제일" || col.endsWith("일")) {
     return formatKoreanDate(value);
   }
 
   return String(value);
+}
+
+function normalizeItemInput(value) {
+  return String(value || "").trim().replace(/[a-z]/g, (char) => char.toUpperCase());
 }
 
 function getToday() {
@@ -116,7 +121,6 @@ function getRecent7Start() {
 
 function getDefaultStartDate() {
   return getToday();
-}
 }
 
 function getDefaultEndDate() {
@@ -237,21 +241,10 @@ function Pagination({ page, setPage, totalCount, totalPages, startNumber, endNum
       </div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <button
-          className="line-btn"
-          style={{ minHeight: 40, height: 40, fontSize: 14, padding: "0 12px" }}
-          disabled={page <= 1}
-          onClick={() => setPage(1)}
-        >
+        <button className="line-btn" style={{ minHeight: 40, height: 40, fontSize: 14, padding: "0 12px" }} disabled={page <= 1} onClick={() => setPage(1)}>
           처음
         </button>
-
-        <button
-          className="line-btn"
-          style={{ minHeight: 40, height: 40, fontSize: 14, padding: "0 12px" }}
-          disabled={page <= 1}
-          onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-        >
+        <button className="line-btn" style={{ minHeight: 40, height: 40, fontSize: 14, padding: "0 12px" }} disabled={page <= 1} onClick={() => setPage((prev) => Math.max(1, prev - 1))}>
           이전
         </button>
 
@@ -259,34 +252,17 @@ function Pagination({ page, setPage, totalCount, totalPages, startNumber, endNum
           <button
             key={p}
             className={p === page ? "search-btn" : "line-btn"}
-            style={{
-              minHeight: 40,
-              height: 40,
-              minWidth: 40,
-              fontSize: 14,
-              padding: "0 12px",
-            }}
+            style={{ minHeight: 40, height: 40, minWidth: 40, fontSize: 14, padding: "0 12px" }}
             onClick={() => setPage(p)}
           >
             {p}
           </button>
         ))}
 
-        <button
-          className="line-btn"
-          style={{ minHeight: 40, height: 40, fontSize: 14, padding: "0 12px" }}
-          disabled={page >= totalPages}
-          onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-        >
+        <button className="line-btn" style={{ minHeight: 40, height: 40, fontSize: 14, padding: "0 12px" }} disabled={page >= totalPages} onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}>
           다음
         </button>
-
-        <button
-          className="line-btn"
-          style={{ minHeight: 40, height: 40, fontSize: 14, padding: "0 12px" }}
-          disabled={page >= totalPages}
-          onClick={() => setPage(totalPages)}
-        >
+        <button className="line-btn" style={{ minHeight: 40, height: 40, fontSize: 14, padding: "0 12px" }} disabled={page >= totalPages} onClick={() => setPage(totalPages)}>
           끝
         </button>
       </div>
@@ -337,6 +313,26 @@ function App() {
     삼창: [],
   });
 
+  const [repairStart, setRepairStart] = useState(getDefaultStartDate());
+  const [repairEnd, setRepairEnd] = useState(getDefaultEndDate());
+  const [repairFactory, setRepairFactory] = useState("전체");
+  const [repairKeyword, setRepairKeyword] = useState("");
+  const [repairSummary, setRepairSummary] = useState({
+    totalDefectQty: 0,
+    totalRepairQty: 0,
+    remainingQty: 0,
+    repairRate: 0,
+    factorySummary: [],
+    itemSummary: [],
+    repairRows: [],
+  });
+
+  const [repairInputDate, setRepairInputDate] = useState(getToday());
+  const [repairInputFactory, setRepairInputFactory] = useState("");
+  const [repairInputItem, setRepairInputItem] = useState("");
+  const [repairInputQty, setRepairInputQty] = useState("");
+  const [repairInputMemo, setRepairInputMemo] = useState("");
+
   const [inputDate, setInputDate] = useState(getToday());
   const [inputRows, setInputRows] = useState([
     { id: 1, item: "", qty: "" },
@@ -386,7 +382,7 @@ function App() {
     const map = {};
 
     inputRows.forEach((row) => {
-      const item = String(row.item || "").trim();
+      const item = normalizeItemInput(row.item);
       const qty = Number(row.qty || 0);
 
       if (!item || qty <= 0) return;
@@ -424,6 +420,12 @@ function App() {
   useEffect(() => {
     loadInitialData();
   }, []);
+
+  useEffect(() => {
+    if (!repairInputFactory && actualFactoryOptions.length > 0) {
+      setRepairInputFactory(actualFactoryOptions[0]);
+    }
+  }, [actualFactoryOptions, repairInputFactory]);
 
   async function loadInitialData() {
     try {
@@ -567,7 +569,7 @@ function App() {
 
       const rows = inputRows
         .map((row) => ({
-          item: String(row.item || "").trim(),
+          item: normalizeItemInput(row.item),
           qty: Number(row.qty || 0),
         }))
         .filter((row) => row.item && row.qty > 0);
@@ -721,16 +723,7 @@ function App() {
 
       const sheetRows = [
         ["ABLE & CO 원단결제용 불량내역", "", "", "", "", "", "", ""],
-        [
-          `기간: ${formatKoreanDate(paymentStart)} ~ ${formatKoreanDate(paymentEnd)}`,
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-        ],
+        [`기간: ${formatKoreanDate(paymentStart)} ~ ${formatKoreanDate(paymentEnd)}`, "", "", "", "", "", "", ""],
         ["조이", "", "", "삼창", "", "", "미주", ""],
         ["품목", "수량", "", "품목", "수량", "", "품목", "수량"],
       ];
@@ -755,16 +748,7 @@ function App() {
         sheetRows.push(row);
       }
 
-      sheetRows.push([
-        "합계",
-        totals.조이,
-        "",
-        "합계",
-        totals.삼창,
-        "",
-        "합계",
-        totals.미주,
-      ]);
+      sheetRows.push(["합계", totals.조이, "", "합계", totals.삼창, "", "합계", totals.미주]);
 
       const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
 
@@ -799,6 +783,148 @@ function App() {
     } catch (error) {
       console.error(error);
       showToast("엑셀 다운로드에 실패했습니다.");
+    }
+  }
+
+  async function handleRepairSearch(nextOptions = {}) {
+    try {
+      setLoading(true);
+
+      const result = await callApi({
+        action: "searchRepairSummary",
+        startDate: nextOptions.startDate || repairStart,
+        endDate: nextOptions.endDate || repairEnd,
+        factory: nextOptions.factory || repairFactory,
+        itemKeyword: nextOptions.itemKeyword ?? repairKeyword,
+      });
+
+      if (!result.ok) {
+        showToast(result.message || "수선분내역 조회 실패");
+        return;
+      }
+
+      setRepairSummary({
+        totalDefectQty: Number(result.totalDefectQty || 0),
+        totalRepairQty: Number(result.totalRepairQty || 0),
+        remainingQty: Number(result.remainingQty || 0),
+        repairRate: Number(result.repairRate || 0),
+        factorySummary: result.factorySummary || [],
+        itemSummary: result.itemSummary || [],
+        repairRows: result.repairRows || [],
+      });
+
+      showToast("수선분내역 조회 완료");
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSaveRepair() {
+    try {
+      if (!isAdmin || !adminPassword) {
+        showToast("관리자 로그인 후 저장 가능합니다.");
+        return;
+      }
+
+      const factoryName = String(repairInputFactory || "").trim();
+      const itemName = normalizeItemInput(repairInputItem);
+      const qty = Number(repairInputQty || 0);
+
+      if (!repairInputDate) {
+        showToast("입고일을 입력해주세요.");
+        return;
+      }
+
+      if (!factoryName) {
+        showToast("공장을 선택해주세요.");
+        return;
+      }
+
+      if (!itemName) {
+        showToast("품목을 입력해주세요.");
+        return;
+      }
+
+      if (!qty || qty <= 0) {
+        showToast("수선수량은 1 이상이어야 합니다.");
+        return;
+      }
+
+      setLoading(true);
+
+      const result = await callApi({
+        action: "saveRepairRows",
+        password: adminPassword,
+        date: repairInputDate,
+        rows: [
+          {
+            factory: factoryName,
+            item: itemName,
+            qty,
+            memo: repairInputMemo,
+          },
+        ],
+      });
+
+      if (!result.ok) {
+        showToast(result.message || "수선분 저장 실패");
+        return;
+      }
+
+      showToast(result.message || "수선분 내역 저장 완료");
+      setRepairInputItem("");
+      setRepairInputQty("");
+      setRepairInputMemo("");
+
+      await handleRepairSearch({
+        startDate: repairStart,
+        endDate: repairEnd,
+        factory: repairFactory,
+        itemKeyword: repairKeyword,
+      });
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDeleteRepair(registerNo) {
+    try {
+      if (!isAdmin || !adminPassword) {
+        showToast("관리자 로그인 후 삭제 가능합니다.");
+        return;
+      }
+
+      const reason = window.prompt("수선분 내역을 삭제처리할까요?\n삭제사유를 입력해주세요.", "수량오입력");
+
+      if (!reason) return;
+
+      const ok = window.confirm(`등록번호 ${registerNo}번 수선분 내역을 삭제처리할까요?`);
+      if (!ok) return;
+
+      setLoading(true);
+
+      const result = await callApi({
+        action: "deleteRepairRow",
+        password: adminPassword,
+        registerNo,
+        reason,
+      });
+
+      if (!result.ok) {
+        showToast(result.message || "수선분 삭제 실패");
+        return;
+      }
+
+      showToast(result.message || "수선분 내역 삭제처리 완료");
+      await handleRepairSearch();
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -950,7 +1076,7 @@ function App() {
         password: adminPassword,
         registerNo,
         date,
-        item,
+        item: normalizeItemInput(item),
         qty,
         reason,
       });
@@ -1077,7 +1203,12 @@ function App() {
             <button
               key={menu.key}
               className={page === menu.key ? "active" : ""}
-              onClick={() => setPage(menu.key)}
+              onClick={() => {
+                setPage(menu.key);
+                if (menu.key === "repair" && repairSummary.repairRows.length === 0) {
+                  setTimeout(() => handleRepairSearch(), 0);
+                }
+              }}
             >
               {menu.label}
             </button>
@@ -1205,6 +1336,37 @@ function App() {
             onCopyGroup={handleCopyPaymentRows}
             onCopyAllGroups={handleCopyAllPaymentRows}
             onDownloadExcel={handleDownloadPaymentExcel}
+          />
+        )}
+
+        {page === "repair" && (
+          <RepairPage
+            isAdmin={isAdmin}
+            startDate={repairStart}
+            endDate={repairEnd}
+            factory={repairFactory}
+            keyword={repairKeyword}
+            setStartDate={setRepairStart}
+            setEndDate={setRepairEnd}
+            setFactory={setRepairFactory}
+            setKeyword={setRepairKeyword}
+            factoryOptions={publicFactoryOptions}
+            actualFactoryOptions={actualFactoryOptions}
+            itemNames={itemNames}
+            summary={repairSummary}
+            onSearch={() => handleRepairSearch()}
+            inputDate={repairInputDate}
+            setInputDate={setRepairInputDate}
+            inputFactory={repairInputFactory}
+            setInputFactory={setRepairInputFactory}
+            inputItem={repairInputItem}
+            setInputItem={setRepairInputItem}
+            inputQty={repairInputQty}
+            setInputQty={setRepairInputQty}
+            inputMemo={repairInputMemo}
+            setInputMemo={setRepairInputMemo}
+            onSave={handleSaveRepair}
+            onDelete={handleDeleteRepair}
           />
         )}
 
@@ -1343,22 +1505,13 @@ function TotalPage({
         onSearch={onSearch}
       />
 
-      <div
-        style={{
-          display: "block",
-          width: "100%",
-          marginTop: 24,
-          padding: 0,
-        }}
-      >
-        <FactorySectionSummary
-          startDate={startDate}
-          endDate={endDate}
-          selectedFactory={factory}
-          factoryOptions={factoryOptions}
-          periodSummary={periodSummary}
-        />
-      </div>
+      <FactorySectionSummary
+        startDate={startDate}
+        endDate={endDate}
+        selectedFactory={factory}
+        factoryOptions={factoryOptions}
+        periodSummary={periodSummary}
+      />
     </section>
   );
 }
@@ -1424,21 +1577,23 @@ function SearchBox({
   );
 }
 
-function KpiCard({ title, value }) {
+function KpiCard({ title, value, suffix = "장", accent }) {
   return (
     <div className="kpi-card">
       <p>{title}</p>
-      <strong>{Number(value || 0).toLocaleString()}</strong>
-      <span>장</span>
+      <strong style={accent ? { color: accent } : undefined}>{Number(value || 0).toLocaleString()}</strong>
+      {suffix && <span>{suffix}</span>}
     </div>
   );
 }
 
-function KpiTextCard({ title, value }) {
+function KpiTextCard({ title, value, accent }) {
   return (
     <div className="kpi-card">
       <p>{title}</p>
-      <strong style={{ fontSize: "clamp(28px, 3vw, 42px)" }}>{value}</strong>
+      <strong style={{ fontSize: "clamp(28px, 3vw, 42px)", color: accent || undefined }}>
+        {value}
+      </strong>
     </div>
   );
 }
@@ -1621,7 +1776,7 @@ function FactorySectionSummary({
   const totalQty = visibleSections.reduce((sum, section) => sum + section.total, 0);
 
   return (
-    <div style={{ display: "block", width: "100%" }}>
+    <div style={{ display: "block", width: "100%", marginTop: 24 }}>
       <div className="kpi-grid">
         <KpiCard title="기간 내 전체 불량" value={totalQty} />
         <KpiTextCard title="표시 공장 수" value={`${visibleSections.length.toLocaleString()}곳`} />
@@ -1632,21 +1787,12 @@ function FactorySectionSummary({
         />
       </div>
 
-      <div
-        className="panel"
-        style={{
-          display: "block",
-          visibility: "visible",
-          opacity: 1,
-          minHeight: 180,
-        }}
-      >
+      <div className="panel" style={{ display: "block", visibility: "visible", opacity: 1, minHeight: 180 }}>
         <div className="panel-head">
           <div>
             <h3>실제공장별 불량 품목 수량</h3>
             <p>
-              기간: {formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)} / 수량 많은
-              순서로 표시
+              기간: {formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)} / 수량 많은 순서로 표시
             </p>
           </div>
         </div>
@@ -1667,14 +1813,7 @@ function FactorySectionSummary({
             조회된 공장별 불량 내역이 없습니다. 상단에서 기간을 확인한 뒤 최신 조회를 눌러주세요.
           </div>
         ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(min(310px, 100%), 1fr))",
-              gap: 18,
-              width: "100%",
-            }}
-          >
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(310px, 100%), 1fr))", gap: 18, width: "100%" }}>
             {visibleSections.map((section) => (
               <FactorySummaryCard
                 key={section.factoryName}
@@ -1782,18 +1921,377 @@ function FactorySummaryCard({ factoryName, rows, total }) {
           </table>
         </div>
 
-        <p
-          style={{
-            margin: "12px 0 0",
-            color: "#8c8172",
-            fontSize: 13,
-            fontWeight: 700,
-          }}
-        >
+        <p style={{ margin: "12px 0 0", color: "#8c8172", fontSize: 13, fontWeight: 700 }}>
           품목별 합계 기준 / 수량 많은 순서
         </p>
       </div>
     </div>
+  );
+}
+
+function RepairPage({
+  isAdmin,
+  startDate,
+  endDate,
+  factory,
+  keyword,
+  setStartDate,
+  setEndDate,
+  setFactory,
+  setKeyword,
+  factoryOptions,
+  actualFactoryOptions,
+  itemNames,
+  summary,
+  onSearch,
+  inputDate,
+  setInputDate,
+  inputFactory,
+  setInputFactory,
+  inputItem,
+  setInputItem,
+  inputQty,
+  setInputQty,
+  inputMemo,
+  setInputMemo,
+  onSave,
+  onDelete,
+}) {
+  const repairRateText = `${Number(summary.repairRate || 0).toLocaleString()}%`;
+
+  return (
+    <section className="page">
+      <PageTitle title="수선분내역" subtitle="기간별 총 불량수량 / 수선입고수량 / 남은 불량수량 관리" />
+
+      <div className="search-card compact no-print">
+        <div className="field">
+          <label>시작일</label>
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        </div>
+
+        <div className="field">
+          <label>종료일</label>
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        </div>
+
+        <div className="field">
+          <label>공장</label>
+          <select value={factory} onChange={(e) => setFactory(e.target.value)}>
+            {factoryOptions.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button className="search-btn" onClick={onSearch}>
+          조회
+        </button>
+
+        <div className="field" style={{ gridColumn: "1 / -1" }}>
+          <label>품목 검색</label>
+          <input
+            value={keyword}
+            onChange={(e) => setKeyword(normalizeItemInput(e.target.value))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                onSearch();
+              }
+            }}
+            placeholder="품목명을 입력하세요"
+          />
+        </div>
+      </div>
+
+      <div className="kpi-grid">
+        <KpiCard title="기간 내 총 불량수량" value={summary.totalDefectQty} accent="#2467e8" />
+        <KpiCard title="기간 내 수선입고수량" value={summary.totalRepairQty} accent="#16813a" />
+        <KpiCard title="남은 불량수량" value={summary.remainingQty} accent="#f04b23" />
+        <KpiTextCard title="수선 처리율" value={repairRateText} accent="#7c3fc9" />
+      </div>
+
+      <div className="dashboard-grid">
+        <RepairSummaryTable
+          title="공장별 요약"
+          rows={summary.factorySummary || []}
+          columns={["실제공장", "불량수량", "수선수량", "남은수량", "수선처리율"]}
+        />
+        <RepairSummaryTable
+          title="품목별 요약"
+          rows={summary.itemSummary || []}
+          columns={["품목", "실제공장", "불량수량", "수선수량", "남은수량"]}
+        />
+      </div>
+
+      <div className="input-grid">
+        <div className="panel">
+          <div className="panel-head">
+            <div>
+              <h3>수선분 입력</h3>
+              <p>공장에서 수선되어 돌아온 수량만 입력합니다.</p>
+            </div>
+          </div>
+
+          {!isAdmin ? (
+            <div
+              style={{
+                padding: "28px 18px",
+                borderRadius: 14,
+                background: "#fbf7ef",
+                border: "1px dashed #d8c7ac",
+                color: "#8c8172",
+                fontWeight: 900,
+                textAlign: "center",
+              }}
+            >
+              수선분 입력은 관리자 로그인 후 가능합니다.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 14 }}>
+              <div className="field">
+                <label>입고일</label>
+                <input type="date" value={inputDate} onChange={(e) => setInputDate(e.target.value)} />
+              </div>
+
+              <div className="field">
+                <label>공장</label>
+                <select value={inputFactory} onChange={(e) => setInputFactory(e.target.value)}>
+                  {actualFactoryOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field">
+                <label>품목</label>
+                <AutocompleteInput
+                  value={inputItem}
+                  onChange={(v) => setInputItem(normalizeItemInput(v))}
+                  options={itemNames}
+                />
+              </div>
+
+              <div className="field">
+                <label>수선수량</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={inputQty}
+                  onChange={(e) => setInputQty(e.target.value)}
+                  placeholder="수량"
+                />
+              </div>
+
+              <div className="field">
+                <label>비고</label>
+                <input
+                  value={inputMemo}
+                  onChange={(e) => setInputMemo(e.target.value)}
+                  placeholder="예: 조이공장 수선입고"
+                />
+              </div>
+
+              <button className="search-btn full" onClick={onSave}>
+                저장
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="panel">
+          <div className="panel-head">
+            <div>
+              <h3>
+                수선분 입고내역 ({formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)})
+              </h3>
+              <p>삭제는 실제 삭제가 아니라 삭제상태로 처리됩니다.</p>
+            </div>
+          </div>
+
+          <RepairRowsTable rows={summary.repairRows || []} isAdmin={isAdmin} onDelete={onDelete} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RepairSummaryTable({ title, rows, columns }) {
+  const totals = rows.reduce(
+    (acc, row) => {
+      acc.불량수량 += Number(row.불량수량 || 0);
+      acc.수선수량 += Number(row.수선수량 || 0);
+      acc.남은수량 += Number(row.남은수량 || 0);
+      return acc;
+    },
+    { 불량수량: 0, 수선수량: 0, 남은수량: 0 }
+  );
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h3>{title}</h3>
+      </div>
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              {columns.map((col) => (
+                <th key={col}>{col === "실제공장" ? "공장" : col}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length} className="empty-cell">
+                  조회된 수선분 요약이 없습니다.
+                </td>
+              </tr>
+            ) : (
+              rows.map((row, index) => (
+                <tr key={`${title}-${index}`}>
+                  {columns.map((col) => {
+                    let value = row[col];
+
+                    if (col === "불량수량" || col === "수선수량" || col === "남은수량") {
+                      value = `${Number(value || 0).toLocaleString()}장`;
+                    }
+
+                    if (col === "수선처리율") {
+                      value = `${Number(value || 0).toLocaleString()}%`;
+                    }
+
+                    return (
+                      <td
+                        key={col}
+                        style={{
+                          fontWeight: col === "남은수량" ? 900 : 700,
+                          color: col === "남은수량" && Number(row[col] || 0) > 0 ? "#f04b23" : undefined,
+                        }}
+                      >
+                        {value || "-"}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))
+            )}
+
+            {rows.length > 0 && (
+              <tr>
+                {columns.map((col, index) => {
+                  let value = "";
+                  if (index === 0) value = "합계";
+                  if (col === "불량수량") value = `${totals.불량수량.toLocaleString()}장`;
+                  if (col === "수선수량") value = `${totals.수선수량.toLocaleString()}장`;
+                  if (col === "남은수량") value = `${totals.남은수량.toLocaleString()}장`;
+                  if (col === "수선처리율") {
+                    value =
+                      totals.불량수량 > 0
+                        ? `${Math.round((totals.수선수량 / totals.불량수량) * 1000) / 10}%`
+                        : "0%";
+                  }
+
+                  return (
+                    <td key={col} style={{ fontWeight: 900, color: col === "남은수량" ? "#f04b23" : "#0a2747" }}>
+                      {value}
+                    </td>
+                  );
+                })}
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function RepairRowsTable({ rows, isAdmin, onDelete }) {
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+  }, [rows?.length]);
+
+  const pagination = getPaginationData(rows || [], page);
+  const pageRows = pagination.pageRows;
+
+  return (
+    <>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>등록번호</th>
+              <th>입고일</th>
+              <th>공장</th>
+              <th>품목</th>
+              <th>수선수량</th>
+              <th>등록일시</th>
+              <th>상태</th>
+              <th>비고</th>
+              <th>관리</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {pageRows.length === 0 ? (
+              <tr>
+                <td colSpan="9" className="empty-cell">
+                  조회된 수선분 입고내역이 없습니다.
+                </td>
+              </tr>
+            ) : (
+              pageRows.map((row) => (
+                <tr key={row.등록번호}>
+                  <td>{row.등록번호}</td>
+                  <td>{formatKoreanDate(row.입고일)}</td>
+                  <td>{row.실제공장}</td>
+                  <td style={{ fontWeight: 800 }}>{row.품목}</td>
+                  <td style={{ fontWeight: 900 }}>{Number(row.수선수량 || 0).toLocaleString()}장</td>
+                  <td>{formatKoreanDateTime(row.등록일시)}</td>
+                  <td>
+                    <strong style={{ color: row.상태 === "삭제" ? "#ba3b31" : "#16813a" }}>
+                      {row.상태 || "정상"}
+                    </strong>
+                  </td>
+                  <td>{row.비고 || "-"}</td>
+                  <td>
+                    <button
+                      className="delete-btn"
+                      disabled={!isAdmin || row.상태 === "삭제"}
+                      style={{
+                        height: 40,
+                        fontSize: 14,
+                        opacity: !isAdmin || row.상태 === "삭제" ? 0.4 : 1,
+                      }}
+                      onClick={() => onDelete(row.등록번호)}
+                    >
+                      삭제
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <Pagination
+        page={pagination.safePage}
+        setPage={setPage}
+        totalCount={pagination.totalCount}
+        totalPages={pagination.totalPages}
+        startNumber={pagination.startNumber}
+        endNumber={pagination.endNumber}
+      />
+    </>
   );
 }
 
@@ -2112,20 +2610,12 @@ function PaymentPage({
       <div className="search-card compact">
         <div className="field">
           <label>시작일</label>
-          <input
-            type="date"
-            value={paymentStart}
-            onChange={(e) => setPaymentStart(e.target.value)}
-          />
+          <input type="date" value={paymentStart} onChange={(e) => setPaymentStart(e.target.value)} />
         </div>
 
         <div className="field">
           <label>종료일</label>
-          <input
-            type="date"
-            value={paymentEnd}
-            onChange={(e) => setPaymentEnd(e.target.value)}
-          />
+          <input type="date" value={paymentEnd} onChange={(e) => setPaymentEnd(e.target.value)} />
         </div>
 
         <div className="field">
@@ -2319,7 +2809,7 @@ function InputPage({
 
                 <AutocompleteInput
                   value={row.item}
-                  onChange={(v) => updateInputRow(row.id, "item", v)}
+                  onChange={(v) => updateInputRow(row.id, "item", normalizeItemInput(v))}
                   options={itemNames}
                   inputRef={(el) => {
                     itemRefs.current[index] = el;
@@ -2422,7 +2912,7 @@ function AutocompleteInput({ value, onChange, options, inputRef, onEnter }) {
         ref={inputRef}
         value={value}
         onChange={(e) => {
-          onChange(e.target.value);
+          onChange(normalizeItemInput(e.target.value));
           setOpen(true);
           setHighlightIndex(0);
         }}
@@ -2704,7 +3194,7 @@ function DefectManagePage({
           <label>품목 검색</label>
           <input
             value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
+            onChange={(e) => setKeyword(normalizeItemInput(e.target.value))}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -2765,12 +3255,7 @@ function DefectManagePage({
           </div>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button
-              className="line-btn"
-              onClick={clearSelection}
-              type="button"
-              style={{ minHeight: 42, height: 42, fontSize: 15 }}
-            >
+            <button className="line-btn" onClick={clearSelection} type="button" style={{ minHeight: 42, height: 42, fontSize: 15 }}>
               선택해제
             </button>
 
@@ -2779,12 +3264,7 @@ function DefectManagePage({
               onClick={submitBulkDelete}
               type="button"
               disabled={selectedIds.length === 0}
-              style={{
-                minHeight: 42,
-                height: 42,
-                fontSize: 15,
-                opacity: selectedIds.length === 0 ? 0.45 : 1,
-              }}
+              style={{ minHeight: 42, height: 42, fontSize: 15, opacity: selectedIds.length === 0 ? 0.45 : 1 }}
             >
               선택삭제
             </button>
@@ -2827,23 +3307,14 @@ function DefectManagePage({
                   const isUnclassified = row.실제공장 === UNCLASSIFIED_FACTORY;
 
                   return (
-                    <tr
-                      key={row.등록번호}
-                      style={{
-                        background: isUnclassified ? "#fff7f4" : undefined,
-                      }}
-                    >
+                    <tr key={row.등록번호} style={{ background: isUnclassified ? "#fff7f4" : undefined }}>
                       <td>
                         <input
                           type="checkbox"
                           checked={isSelected}
                           disabled={isDeleted}
                           onChange={() => toggleSelect(row.등록번호)}
-                          style={{
-                            width: 18,
-                            height: 18,
-                            opacity: isDeleted ? 0.35 : 1,
-                          }}
+                          style={{ width: 18, height: 18, opacity: isDeleted ? 0.35 : 1 }}
                         />
                       </td>
 
@@ -2856,25 +3327,16 @@ function DefectManagePage({
                           <input
                             type="date"
                             value={edit.date || ""}
-                            onChange={(e) =>
-                              updateEdit(row.등록번호, "date", e.target.value)
-                            }
+                            onChange={(e) => updateEdit(row.등록번호, "date", e.target.value)}
                           />
                         )}
                       </td>
 
                       <td>
-                        <div
-                          style={{
-                            fontWeight: 800,
-                            color: isUnclassified ? "#a33a24" : undefined,
-                          }}
-                        >
+                        <div style={{ fontWeight: 800, color: isUnclassified ? "#a33a24" : undefined }}>
                           {row.실제공장}
                         </div>
-                        <div style={{ fontSize: 12, color: "#8c8172" }}>
-                          {row.결제그룹}
-                        </div>
+                        <div style={{ fontSize: 12, color: "#8c8172" }}>{row.결제그룹}</div>
                       </td>
 
                       <td>
@@ -2885,9 +3347,7 @@ function DefectManagePage({
                             <input
                               list="defectManageItemList"
                               value={edit.item || ""}
-                              onChange={(e) =>
-                                updateEdit(row.등록번호, "item", e.target.value)
-                              }
+                              onChange={(e) => updateEdit(row.등록번호, "item", normalizeItemInput(e.target.value))}
                               placeholder="품목명"
                             />
                             <datalist id="defectManageItemList">
@@ -2907,25 +3367,17 @@ function DefectManagePage({
                             type="number"
                             min="1"
                             value={edit.qty || ""}
-                            onChange={(e) =>
-                              updateEdit(row.등록번호, "qty", e.target.value)
-                            }
+                            onChange={(e) => updateEdit(row.등록번호, "qty", e.target.value)}
                           />
                         )}
                       </td>
 
                       <td>
-                        <strong
-                          style={{
-                            color: isDeleted ? "#ba3b31" : "#0a2747",
-                          }}
-                        >
+                        <strong style={{ color: isDeleted ? "#ba3b31" : "#0a2747" }}>
                           {row.상태 || "정상"}
                         </strong>
                         {isDeleted && row.삭제사유 && (
-                          <div style={{ fontSize: 12, color: "#8c8172" }}>
-                            {row.삭제사유}
-                          </div>
+                          <div style={{ fontSize: 12, color: "#8c8172" }}>{row.삭제사유}</div>
                         )}
                       </td>
 
@@ -2935,46 +3387,19 @@ function DefectManagePage({
                         ) : (
                           <input
                             value={edit.reason || ""}
-                            onChange={(e) =>
-                              updateEdit(row.등록번호, "reason", e.target.value)
-                            }
+                            onChange={(e) => updateEdit(row.등록번호, "reason", e.target.value)}
                             placeholder="수정사유"
                           />
                         )}
                       </td>
 
                       <td>
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 8,
-                            justifyContent: "center",
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          <button
-                            className="line-btn"
-                            onClick={() => submitUpdate(row)}
-                            disabled={isDeleted}
-                            style={{
-                              opacity: isDeleted ? 0.4 : 1,
-                              height: 44,
-                              fontSize: 15,
-                            }}
-                          >
+                        <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                          <button className="line-btn" onClick={() => submitUpdate(row)} disabled={isDeleted} style={{ opacity: isDeleted ? 0.4 : 1, height: 44, fontSize: 15 }}>
                             수정
                           </button>
 
-                          <button
-                            className="delete-btn"
-                            onClick={() => submitDelete(row)}
-                            disabled={isDeleted}
-                            style={{
-                              opacity: isDeleted ? 0.4 : 1,
-                              height: 44,
-                              fontSize: 15,
-                            }}
-                          >
+                          <button className="delete-btn" onClick={() => submitDelete(row)} disabled={isDeleted} style={{ opacity: isDeleted ? 0.4 : 1, height: 44, fontSize: 15 }}>
                             삭제
                           </button>
                         </div>
@@ -3051,7 +3476,9 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
   }
 
   async function submitAdd() {
-    if (!newItemName.trim()) {
+    const finalItem = normalizeItemInput(newItemName);
+
+    if (!finalItem) {
       alert("품목명을 입력해주세요.");
       return;
     }
@@ -3062,7 +3489,7 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
     }
 
     await onAdd({
-      itemName: newItemName.trim(),
+      itemName: finalItem,
       factoryName: newFactoryName,
       memo: newMemo.trim() || "신규 품목 추가",
     });
@@ -3074,7 +3501,7 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
   async function submitUpdate(item) {
     const edit = editMap[item.품목] || {};
     const oldItemName = item.품목;
-    const newItemName = String(edit.newItemName || "").trim();
+    const newItemName = normalizeItemInput(edit.newItemName || "");
     const newFactory = String(edit.newFactory || "").trim();
     const memo = String(edit.memo || "").trim() || "품목/공장 변경";
 
@@ -3099,8 +3526,7 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
     let confirmText = `품목공장 정보를 수정할까요?\n\n기존품목: ${oldItemName}\n변경품목: ${newItemName}\n기존공장: ${item.실제공장}\n변경공장: ${newFactory}`;
 
     if (isNameChanged) {
-      confirmText +=
-        "\n\n주의: 품목명을 변경하면 기존 공장별불량데이터와 전체불량원장의 품목명도 함께 변경됩니다.";
+      confirmText += "\n\n주의: 품목명을 변경하면 기존 공장별불량데이터와 전체불량원장의 품목명도 함께 변경됩니다.";
     }
 
     const ok = window.confirm(confirmText);
@@ -3137,10 +3563,7 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
 
   return (
     <section className="page">
-      <PageTitle
-        title="품목공장관리"
-        subtitle="품목명 전체 변경 / 공장 수정 / 품목 삭제처리"
-      />
+      <PageTitle title="품목공장관리" subtitle="품목명 전체 변경 / 공장 수정 / 품목 삭제처리" />
 
       <div className="panel">
         <div className="panel-head">
@@ -3155,8 +3578,8 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
             <label>품목명</label>
             <input
               value={newItemName}
-              onChange={(e) => setNewItemName(e.target.value)}
-              placeholder="예: 마카롱(아,검,크,핑)"
+              onChange={(e) => setNewItemName(normalizeItemInput(e.target.value))}
+              placeholder="예: 마카롱S"
             />
           </div>
 
@@ -3173,11 +3596,7 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
 
           <div className="field">
             <label>비고</label>
-            <input
-              value={newMemo}
-              onChange={(e) => setNewMemo(e.target.value)}
-              placeholder="비고"
-            />
+            <input value={newMemo} onChange={(e) => setNewMemo(e.target.value)} placeholder="비고" />
           </div>
 
           <button className="search-btn" onClick={submitAdd}>
@@ -3190,19 +3609,13 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
         <div className="panel-head">
           <div>
             <h3>품목 수정 / 삭제</h3>
-            <p>
-              20개씩 페이지로 표시됩니다. 품목명 수정 시 기존 불량데이터와 전체불량원장 품목명도 함께 변경됩니다.
-            </p>
+            <p>20개씩 페이지로 표시됩니다. 품목명 수정 시 기존 불량데이터와 전체불량원장 품목명도 함께 변경됩니다.</p>
           </div>
         </div>
 
         <div className="field" style={{ maxWidth: 420, marginBottom: 18 }}>
           <label>품목 검색</label>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="품목명을 입력하세요"
-          />
+          <input value={search} onChange={(e) => setSearch(normalizeItemInput(e.target.value))} placeholder="품목명을 입력하세요" />
         </div>
 
         <div className="table-wrap">
@@ -3242,9 +3655,7 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
                       <td>
                         <input
                           value={edit.newItemName || ""}
-                          onChange={(e) =>
-                            updateEdit(item.품목, "newItemName", e.target.value)
-                          }
+                          onChange={(e) => updateEdit(item.품목, "newItemName", normalizeItemInput(e.target.value))}
                           placeholder="변경품목명"
                         />
                       </td>
@@ -3254,9 +3665,7 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
                       <td>
                         <select
                           value={edit.newFactory || item.실제공장}
-                          onChange={(e) =>
-                            updateEdit(item.품목, "newFactory", e.target.value)
-                          }
+                          onChange={(e) => updateEdit(item.품목, "newFactory", e.target.value)}
                         >
                           {factories.map((factory) => (
                             <option key={factory} value={factory}>
@@ -3267,11 +3676,7 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
                       </td>
 
                       <td>
-                        <input
-                          value={edit.memo || ""}
-                          onChange={(e) => updateEdit(item.품목, "memo", e.target.value)}
-                          placeholder="비고"
-                        />
+                        <input value={edit.memo || ""} onChange={(e) => updateEdit(item.품목, "memo", e.target.value)} placeholder="비고" />
                       </td>
 
                       <td>
@@ -3279,27 +3684,12 @@ function ItemFactoryPage({ items, factories, onAdd, onUpdate, onDelete }) {
                       </td>
 
                       <td>
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 8,
-                            justifyContent: "center",
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          <button
-                            className="line-btn"
-                            onClick={() => submitUpdate(item)}
-                            style={{ height: 44, fontSize: 15 }}
-                          >
+                        <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                          <button className="line-btn" onClick={() => submitUpdate(item)} style={{ height: 44, fontSize: 15 }}>
                             수정
                           </button>
 
-                          <button
-                            className="delete-btn"
-                            onClick={() => submitDelete(item)}
-                            style={{ height: 44, fontSize: 15 }}
-                          >
+                          <button className="delete-btn" onClick={() => submitDelete(item)} style={{ height: 44, fontSize: 15 }}>
                             삭제
                           </button>
                         </div>
@@ -3352,12 +3742,7 @@ function PaginatedSimpleTable({ columns, rows, labelMap = {}, suffixMap = {} }) 
 
   return (
     <>
-      <SimpleTable
-        columns={columns}
-        rows={pageRows}
-        labelMap={labelMap}
-        suffixMap={suffixMap}
-      />
+      <SimpleTable columns={columns} rows={pageRows} labelMap={labelMap} suffixMap={suffixMap} />
 
       <Pagination
         page={pagination.safePage}
@@ -3396,9 +3781,7 @@ function SimpleTable({ columns, rows, labelMap = {}, suffixMap = {} }) {
                 {columns.map((col) => (
                   <td key={col}>
                     {formatTableCell(row[col], col)}
-                    {row[col] !== undefined && row[col] !== "" && suffixMap[col]
-                      ? suffixMap[col]
-                      : ""}
+                    {row[col] !== undefined && row[col] !== "" && suffixMap[col] ? suffixMap[col] : ""}
                   </td>
                 ))}
               </tr>
