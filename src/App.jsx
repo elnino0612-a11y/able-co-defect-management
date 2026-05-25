@@ -19,6 +19,7 @@ const PUBLIC_MENU = [
 const ADMIN_MENU = [
   { key: "input", label: "불량건 입력" },
   { key: "repairInput", label: "수선분 입력" },
+  { key: "completeDefectInput", label: "완불건 입력" },
   { key: "defectManage", label: "불량내역관리" },
   { key: "itemFactory", label: "품목공장관리" },
   { key: "history", label: "공장변경이력" },
@@ -321,15 +322,25 @@ function App() {
   const [repairSummary, setRepairSummary] = useState({
     totalDefectQty: 0,
     totalRepairQty: 0,
+    totalCompleteDefectQty: 0,
     remainingQty: 0,
     repairRate: 0,
+    recoveryRate: 0,
     factorySummary: [],
     itemSummary: [],
     repairRows: [],
+    completeDefectRows: [],
   });
 
   const [repairInputDate, setRepairInputDate] = useState(getToday());
   const [repairInputRows, setRepairInputRows] = useState([
+    { id: 1, factory: "", item: "", qty: "", memo: "" },
+    { id: 2, factory: "", item: "", qty: "", memo: "" },
+    { id: 3, factory: "", item: "", qty: "", memo: "" },
+  ]);
+
+  const [completeInputDate, setCompleteInputDate] = useState(getToday());
+  const [completeInputRows, setCompleteInputRows] = useState([
     { id: 1, factory: "", item: "", qty: "", memo: "" },
     { id: 2, factory: "", item: "", qty: "", memo: "" },
     { id: 3, factory: "", item: "", qty: "", memo: "" },
@@ -839,11 +850,14 @@ function App() {
       setRepairSummary({
         totalDefectQty: Number(result.totalDefectQty || 0),
         totalRepairQty: Number(result.totalRepairQty || 0),
+        totalCompleteDefectQty: Number(result.totalCompleteDefectQty || result.totalCompleteQty || 0),
         remainingQty: Number(result.remainingQty || 0),
         repairRate: Number(result.repairRate || 0),
+        recoveryRate: Number(result.recoveryRate || 0),
         factorySummary: result.factorySummary || [],
         itemSummary: result.itemSummary || [],
         repairRows: result.repairRows || [],
+        completeDefectRows: result.completeDefectRows || [],
       });
 
       showToast("수선분내역 조회 완료");
@@ -1006,6 +1020,167 @@ function App() {
       }
 
       showToast(result.message || "수선분 내역 삭제처리 완료");
+      await handleRepairSearch();
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+
+  function updateCompleteInputRow(id, field, value) {
+    setCompleteInputRows((prev) =>
+      prev.map((row) => {
+        if (row.id !== id) return row;
+
+        if (field === "item") {
+          const itemName = normalizeItemInput(value);
+
+          return {
+            ...row,
+            item: itemName,
+            factory: itemFactoryMap[itemName] || "",
+          };
+        }
+
+        return {
+          ...row,
+          [field]: value,
+        };
+      })
+    );
+  }
+
+  function addCompleteInputRow() {
+    setCompleteInputRows((prev) => [
+      ...prev,
+      {
+        id: Date.now() + Math.random(),
+        factory: "",
+        item: "",
+        qty: "",
+        memo: "",
+      },
+    ]);
+  }
+
+  function removeCompleteInputRow(id) {
+    setCompleteInputRows((prev) => {
+      if (prev.length <= 1) {
+        return [
+          {
+            id: Date.now(),
+            factory: "",
+            item: "",
+            qty: "",
+            memo: "",
+          },
+        ];
+      }
+
+      return prev.filter((row) => row.id !== id);
+    });
+  }
+
+  async function handleSaveCompleteDefect() {
+    try {
+      if (!isAdmin || !adminPassword) {
+        showToast("관리자 로그인 후 저장 가능합니다.");
+        return;
+      }
+
+      if (!completeInputDate) {
+        showToast("처리일을 입력해주세요.");
+        return;
+      }
+
+      const rows = completeInputRows
+        .map((row) => ({
+          factory: String(row.factory || "").trim(),
+          item: normalizeItemInput(row.item),
+          qty: Number(row.qty || 0),
+          memo: String(row.memo || "").trim(),
+        }))
+        .filter((row) => row.factory || row.item || row.qty > 0 || row.memo);
+
+      if (rows.length === 0) {
+        showToast("저장할 완전불량 내역을 입력해주세요.");
+        return;
+      }
+
+      const invalidRowIndex = rows.findIndex((row) => {
+        return !row.factory || !row.item || !row.qty || row.qty <= 0;
+      });
+
+      if (invalidRowIndex !== -1) {
+        showToast(`${invalidRowIndex + 1}번째 완불건 입력행의 품목/자동공장/수량을 확인해주세요. 품목공장기준표에 없는 품목은 먼저 등록해야 합니다.`);
+        return;
+      }
+
+      setLoading(true);
+
+      const result = await callApi({
+        action: "saveCompleteDefectRows",
+        password: adminPassword,
+        date: completeInputDate,
+        rows,
+      });
+
+      if (!result.ok) {
+        showToast(result.message || "완전불량 저장 실패");
+        return;
+      }
+
+      showToast(result.message || `${rows.length}건 완전불량 내역 저장 완료`);
+      setCompleteInputRows([
+        { id: Date.now() + 1, factory: "", item: "", qty: "", memo: "" },
+        { id: Date.now() + 2, factory: "", item: "", qty: "", memo: "" },
+        { id: Date.now() + 3, factory: "", item: "", qty: "", memo: "" },
+      ]);
+
+      await handleRepairSearch({
+        startDate: repairStart,
+        endDate: repairEnd,
+        factory: repairFactory,
+        itemKeyword: repairKeyword,
+      });
+    } catch (error) {
+      showToast(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDeleteCompleteDefect(registerNo) {
+    try {
+      if (!isAdmin || !adminPassword) {
+        showToast("관리자 로그인 후 삭제 가능합니다.");
+        return;
+      }
+
+      const reason = window.prompt("완전불량 내역을 삭제처리할까요?\n삭제사유를 입력해주세요.", "수량오입력");
+
+      if (!reason) return;
+
+      const ok = window.confirm(`등록번호 ${registerNo}번 완전불량 내역을 삭제처리할까요?`);
+      if (!ok) return;
+
+      setLoading(true);
+
+      const result = await callApi({
+        action: "deleteCompleteDefectRow",
+        password: adminPassword,
+        registerNo,
+        reason,
+      });
+
+      if (!result.ok) {
+        showToast(result.message || "완전불량 삭제 실패");
+        return;
+      }
+
+      showToast(result.message || "완전불량 내역 삭제처리 완료");
       await handleRepairSearch();
     } catch (error) {
       showToast(error.message);
@@ -1469,6 +1644,32 @@ function App() {
             removeInputRow={removeRepairInputRow}
             onSave={handleSaveRepair}
             onDelete={handleDeleteRepair}
+          />
+        )}
+
+
+        {page === "completeDefectInput" && isAdmin && (
+          <CompleteDefectInputPage
+            startDate={repairStart}
+            endDate={repairEnd}
+            factory={repairFactory}
+            keyword={repairKeyword}
+            setStartDate={setRepairStart}
+            setEndDate={setRepairEnd}
+            setFactory={setRepairFactory}
+            setKeyword={setRepairKeyword}
+            factoryOptions={publicFactoryOptions}
+            itemNames={itemNames}
+            summary={repairSummary}
+            onSearch={() => handleRepairSearch()}
+            inputDate={completeInputDate}
+            setInputDate={setCompleteInputDate}
+            inputRows={completeInputRows}
+            updateInputRow={updateCompleteInputRow}
+            addInputRow={addCompleteInputRow}
+            removeInputRow={removeCompleteInputRow}
+            onSave={handleSaveCompleteDefect}
+            onDelete={handleDeleteCompleteDefect}
           />
         )}
 
@@ -2045,10 +2246,11 @@ function RepairPage({
   onSearch,
 }) {
   const repairRateText = `${Number(summary.repairRate || 0).toLocaleString()}%`;
+  const recoveryRateText = `${Number(summary.recoveryRate || 0).toLocaleString()}%`;
 
   return (
     <section className="page">
-      <PageTitle title="수선분내역" subtitle="기간별 총 불량수량 / 수선입고수량 / 남은 불량수량 조회" />
+      <PageTitle title="수선분내역" subtitle="기간별 불량건 / 수선완료 / 완전불량 / 남은수량 조회" />
 
       <div className="search-card compact no-print">
         <div className="field">
@@ -2093,36 +2295,29 @@ function RepairPage({
       </div>
 
       <div className="kpi-grid">
-        <KpiCard title="기간 내 총 불량수량" value={summary.totalDefectQty} accent="#2467e8" />
-        <KpiCard title="기간 내 수선입고수량" value={summary.totalRepairQty} accent="#16813a" />
-        <KpiCard title="남은 불량수량" value={summary.remainingQty} accent="#f04b23" />
-        <KpiTextCard title="수선 처리율" value={repairRateText} accent="#7c3fc9" />
+        <KpiCard title="불량건" value={summary.totalDefectQty} accent="#2467e8" />
+        <KpiCard title="수선완료" value={summary.totalRepairQty} accent="#16813a" />
+        <KpiCard title="완전불량" value={summary.totalCompleteDefectQty} accent="#8c6328" />
+        <KpiCard title="남은수량" value={summary.remainingQty} accent="#f04b23" />
+        <KpiTextCard title="수선처리율" value={repairRateText} accent="#7c3fc9" />
+        <KpiTextCard title="회수율" value={recoveryRateText} accent="#0057b8" />
+      </div>
+
+      <div className="panel" style={{ padding: "14px 18px", color: "#6f6256", fontWeight: 800 }}>
+        남은수량 = 불량건 - 수선완료 - 완전불량 / 수선처리율은 완전불량을 제외하고 계산됩니다.
       </div>
 
       <div className="dashboard-grid">
         <RepairSummaryTable
           title="공장별 요약"
           rows={summary.factorySummary || []}
-          columns={["실제공장", "불량수량", "수선수량", "남은수량", "수선처리율"]}
+          columns={["실제공장", "불량건", "수선완료", "완전불량", "남은수량", "수선처리율", "회수율"]}
         />
         <RepairSummaryTable
           title="품목별 요약"
           rows={summary.itemSummary || []}
-          columns={["품목", "실제공장", "불량수량", "수선수량", "남은수량"]}
+          columns={["품목", "실제공장", "불량건", "수선완료", "완전불량", "남은수량"]}
         />
-      </div>
-
-      <div
-        className="panel"
-        style={{
-          padding: "20px 22px",
-          borderStyle: "dashed",
-          color: "#8c8172",
-          fontWeight: 900,
-          textAlign: "center",
-        }}
-      >
-        수선분 입력은 관리자 메뉴의 <strong style={{ color: "#0a2747" }}>수선분 입력</strong>에서 따로 진행합니다.
       </div>
 
       <div className="panel">
@@ -2131,7 +2326,7 @@ function RepairPage({
             <h3>
               수선분 입고내역 ({formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)})
             </h3>
-            <p>조회 전용 화면입니다. 삭제처리는 관리자 메뉴의 수선분 입력에서 가능합니다.</p>
+            <p>조회 전용 화면입니다. 입력/삭제처리는 관리자 메뉴에서 가능합니다.</p>
           </div>
         </div>
 
@@ -2410,16 +2605,363 @@ function RepairInputPage({
   );
 }
 
+
+function CompleteDefectInputPage({
+  startDate,
+  endDate,
+  factory,
+  keyword,
+  setStartDate,
+  setEndDate,
+  setFactory,
+  setKeyword,
+  factoryOptions,
+  itemNames,
+  summary,
+  onSearch,
+  inputDate,
+  setInputDate,
+  inputRows,
+  updateInputRow,
+  addInputRow,
+  removeInputRow,
+  onSave,
+  onDelete,
+}) {
+  const inputPreview = useMemo(() => {
+    const rows = Array.isArray(inputRows) ? inputRows : [];
+    const validRows = rows
+      .map((row) => ({
+        factory: String(row.factory || "").trim(),
+        item: normalizeItemInput(row.item),
+        qty: Number(row.qty || 0),
+        memo: String(row.memo || "").trim(),
+      }))
+      .filter((row) => row.factory && row.item && row.qty > 0);
+
+    const totalQty = validRows.reduce((sum, row) => sum + Number(row.qty || 0), 0);
+
+    return {
+      count: validRows.length,
+      totalQty,
+    };
+  }, [inputRows]);
+
+  return (
+    <section className="page">
+      <PageTitle title="완불건 입력" subtitle="수선이 불가능한 완전불량 수량을 여러 줄로 한 번에 저장" />
+
+      <div className="panel">
+        <div className="panel-head">
+          <div>
+            <h3>완불건 다중입력</h3>
+            <p>품목을 입력하면 품목공장기준표 기준으로 실제공장이 자동 지정됩니다. 처리일은 모든 행에 동일하게 적용됩니다.</p>
+          </div>
+          <div
+            style={{
+              padding: "8px 14px",
+              borderRadius: 999,
+              background: "#fff8ec",
+              border: "1px solid #eadfcd",
+              color: "#0a2747",
+              fontWeight: 900,
+              whiteSpace: "nowrap",
+            }}
+          >
+            입력 {inputPreview.count.toLocaleString()}건 / {inputPreview.totalQty.toLocaleString()}장
+          </div>
+        </div>
+
+        <div className="field date-field" style={{ maxWidth: 260, marginBottom: 16 }}>
+          <label>처리일</label>
+          <input type="date" value={inputDate} onChange={(e) => setInputDate(e.target.value)} />
+        </div>
+
+        <div style={{ display: "grid", gap: 14 }}>
+          {(inputRows || []).map((row, index) => (
+            <div
+              key={row.id}
+              style={{
+                border: "1px solid #eadfcd",
+                background: "#fffdf8",
+                borderRadius: 16,
+                padding: 16,
+                boxShadow: "0 10px 26px rgba(20, 24, 31, 0.06)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginBottom: 14,
+                  paddingBottom: 12,
+                  borderBottom: "1px solid #f0e5d4",
+                }}
+              >
+                <strong style={{ color: "#0a2747", fontSize: 16, fontWeight: 900 }}>
+                  완불건 {index + 1}
+                </strong>
+
+                <button className="delete-btn" type="button" onClick={() => removeInputRow(row.id)} style={{ height: 40, fontSize: 14 }}>
+                  삭제
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))", gap: 12 }}>
+                <div className="field">
+                  <label>품목</label>
+                  <AutocompleteInput
+                    value={row.item || ""}
+                    onChange={(v) => updateInputRow(row.id, "item", normalizeItemInput(v))}
+                    options={itemNames}
+                  />
+                </div>
+
+                <div className="field">
+                  <label>자동공장</label>
+                  <div
+                    style={{
+                      minHeight: 48,
+                      display: "flex",
+                      alignItems: "center",
+                      padding: "0 14px",
+                      borderRadius: 12,
+                      border: row.item && !row.factory ? "1px solid #ef9a8a" : "1px solid #eadfcd",
+                      background: row.item && !row.factory ? "#fff3f0" : "#fbf7ef",
+                      color: row.item && !row.factory ? "#a33a24" : "#0a2747",
+                      fontWeight: 900,
+                    }}
+                  >
+                    {!row.item ? "품목 입력 시 자동 표시" : row.factory || "공장 미등록"}
+                  </div>
+                  {row.item && !row.factory && (
+                    <p style={{ margin: "7px 0 0", color: "#a33a24", fontSize: 12, fontWeight: 800 }}>
+                      품목공장기준표에 없는 품목입니다. 먼저 품목공장관리에 등록해주세요.
+                    </p>
+                  )}
+                </div>
+
+                <div className="field">
+                  <label>완전불량수량</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={row.qty || ""}
+                    onChange={(e) => updateInputRow(row.id, "qty", e.target.value)}
+                    placeholder="수량"
+                  />
+                </div>
+
+                <div className="field">
+                  <label>비고</label>
+                  <input
+                    value={row.memo || ""}
+                    onChange={(e) => updateInputRow(row.id, "memo", e.target.value)}
+                    placeholder="예: 수선불가 완불처리"
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 16 }}>
+          <button className="line-btn" type="button" onClick={addInputRow}>
+            + 행 추가
+          </button>
+          <button className="search-btn" type="button" onClick={onSave}>
+            입력한 완불건 저장
+          </button>
+        </div>
+      </div>
+
+      <div className="search-card compact no-print">
+        <div className="field">
+          <label>시작일</label>
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+        </div>
+
+        <div className="field">
+          <label>종료일</label>
+          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+        </div>
+
+        <div className="field">
+          <label>공장</label>
+          <select value={factory} onChange={(e) => setFactory(e.target.value)}>
+            {factoryOptions.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button className="search-btn" onClick={onSearch}>
+          완불내역 조회
+        </button>
+
+        <div className="field" style={{ gridColumn: "1 / -1" }}>
+          <label>품목 검색</label>
+          <input
+            value={keyword}
+            onChange={(e) => setKeyword(normalizeItemInput(e.target.value))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                onSearch();
+              }
+            }}
+            placeholder="품목명을 입력하세요"
+          />
+        </div>
+      </div>
+
+      <div className="kpi-grid">
+        <KpiCard title="불량건" value={summary.totalDefectQty} accent="#2467e8" />
+        <KpiCard title="수선완료" value={summary.totalRepairQty} accent="#16813a" />
+        <KpiCard title="완전불량" value={summary.totalCompleteDefectQty} accent="#8c6328" />
+        <KpiCard title="남은수량" value={summary.remainingQty} accent="#f04b23" />
+      </div>
+
+      <div className="panel">
+        <div className="panel-head">
+          <div>
+            <h3>
+              완전불량 처리내역 ({formatKoreanDate(startDate)} ~ {formatKoreanDate(endDate)})
+            </h3>
+            <p>잘못 입력한 완불건은 삭제상태로 처리됩니다.</p>
+          </div>
+        </div>
+
+        <CompleteDefectRowsTable rows={summary.completeDefectRows || []} isAdmin={true} onDelete={onDelete} />
+      </div>
+    </section>
+  );
+}
+
+function CompleteDefectRowsTable({ rows, isAdmin, onDelete }) {
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+  }, [rows?.length]);
+
+  const pagination = getPaginationData(rows || [], page);
+  const pageRows = pagination.pageRows;
+
+  return (
+    <>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>등록번호</th>
+              <th>처리일</th>
+              <th>공장</th>
+              <th>품목</th>
+              <th>완전불량수량</th>
+              <th>등록일시</th>
+              <th>상태</th>
+              <th>비고</th>
+              <th>관리</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {pageRows.length === 0 ? (
+              <tr>
+                <td colSpan="9" className="empty-cell">
+                  조회된 완전불량 처리내역이 없습니다.
+                </td>
+              </tr>
+            ) : (
+              pageRows.map((row) => (
+                <tr key={row.등록번호}>
+                  <td>{row.등록번호}</td>
+                  <td>{formatKoreanDate(row.처리일)}</td>
+                  <td>{row.실제공장}</td>
+                  <td style={{ fontWeight: 800 }}>{row.품목}</td>
+                  <td style={{ fontWeight: 900, color: "#8c6328" }}>{Number(row.완전불량수량 || 0).toLocaleString()}장</td>
+                  <td>{formatKoreanDateTime(row.등록일시)}</td>
+                  <td>
+                    <strong style={{ color: row.상태 === "삭제" ? "#ba3b31" : "#16813a" }}>
+                      {row.상태 || "정상"}
+                    </strong>
+                  </td>
+                  <td>{row.비고 || "-"}</td>
+                  <td>
+                    <button
+                      className="delete-btn"
+                      disabled={!isAdmin || row.상태 === "삭제"}
+                      style={{ height: 40, fontSize: 14, opacity: !isAdmin || row.상태 === "삭제" ? 0.4 : 1 }}
+                      onClick={() => onDelete(row.등록번호)}
+                    >
+                      삭제
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <Pagination
+        page={pagination.safePage}
+        setPage={setPage}
+        totalCount={pagination.totalCount}
+        totalPages={pagination.totalPages}
+        startNumber={pagination.startNumber}
+        endNumber={pagination.endNumber}
+      />
+    </>
+  );
+}
+
 function RepairSummaryTable({ title, rows, columns }) {
   const totals = rows.reduce(
     (acc, row) => {
-      acc.불량수량 += Number(row.불량수량 || 0);
-      acc.수선수량 += Number(row.수선수량 || 0);
+      acc.불량건 += Number(row.불량건 ?? row.불량수량 ?? 0);
+      acc.수선완료 += Number(row.수선완료 ?? row.수선수량 ?? 0);
+      acc.완전불량 += Number(row.완전불량 ?? row.완전불량수량 ?? 0);
       acc.남은수량 += Number(row.남은수량 || 0);
       return acc;
     },
-    { 불량수량: 0, 수선수량: 0, 남은수량: 0 }
+    { 불량건: 0, 수선완료: 0, 완전불량: 0, 남은수량: 0 }
   );
+
+  const totalRepairTarget = Math.max(totals.불량건 - totals.완전불량, 0);
+  const totalRepairRate = totalRepairTarget > 0 ? Math.min((totals.수선완료 / totalRepairTarget) * 100, 100) : 0;
+  const totalRecoveryRate = totals.불량건 > 0 ? Math.min(((totals.수선완료 + totals.완전불량) / totals.불량건) * 100, 100) : 0;
+
+  function getCellValue(row, col) {
+    if (col === "불량건") return Number(row.불량건 ?? row.불량수량 ?? 0);
+    if (col === "수선완료") return Number(row.수선완료 ?? row.수선수량 ?? 0);
+    if (col === "완전불량") return Number(row.완전불량 ?? row.완전불량수량 ?? 0);
+    return row[col];
+  }
+
+  function formatSummaryValue(row, col) {
+    const value = getCellValue(row, col);
+
+    if (["불량건", "수선완료", "완전불량", "남은수량"].includes(col)) {
+      return `${Number(value || 0).toLocaleString()}장`;
+    }
+
+    if (["수선처리율", "회수율"].includes(col)) {
+      return `${Number(value || 0).toLocaleString()}%`;
+    }
+
+    return value || "-";
+  }
+
+  function getHeaderLabel(col) {
+    if (col === "실제공장") return "공장";
+    return col;
+  }
 
   return (
     <div className="panel">
@@ -2432,7 +2974,7 @@ function RepairSummaryTable({ title, rows, columns }) {
           <thead>
             <tr>
               {columns.map((col) => (
-                <th key={col}>{col === "실제공장" ? "공장" : col}</th>
+                <th key={col}>{getHeaderLabel(col)}</th>
               ))}
             </tr>
           </thead>
@@ -2447,25 +2989,28 @@ function RepairSummaryTable({ title, rows, columns }) {
               rows.map((row, index) => (
                 <tr key={`${title}-${index}`}>
                   {columns.map((col) => {
-                    let value = row[col];
-
-                    if (col === "불량수량" || col === "수선수량" || col === "남은수량") {
-                      value = `${Number(value || 0).toLocaleString()}장`;
-                    }
-
-                    if (col === "수선처리율") {
-                      value = `${Number(value || 0).toLocaleString()}%`;
-                    }
+                    const rawValue = getCellValue(row, col);
+                    const isQty = ["불량건", "수선완료", "완전불량", "남은수량"].includes(col);
+                    const isRate = ["수선처리율", "회수율"].includes(col);
 
                     return (
                       <td
                         key={col}
                         style={{
-                          fontWeight: col === "남은수량" ? 900 : 700,
-                          color: col === "남은수량" && Number(row[col] || 0) > 0 ? "#f04b23" : undefined,
+                          fontWeight: col === "남은수량" || col === "완전불량" ? 900 : 700,
+                          color:
+                            col === "남은수량" && Number(rawValue || 0) > 0
+                              ? "#0057b8"
+                              : col === "완전불량" && Number(rawValue || 0) > 0
+                              ? "#8c6328"
+                              : col === "수선처리율"
+                              ? "#16813a"
+                              : col === "회수율"
+                              ? "#0057b8"
+                              : undefined,
                         }}
                       >
-                        {value || "-"}
+                        {isQty || isRate ? formatSummaryValue(row, col) : rawValue || "-"}
                       </td>
                     );
                   })}
@@ -2478,18 +3023,30 @@ function RepairSummaryTable({ title, rows, columns }) {
                 {columns.map((col, index) => {
                   let value = "";
                   if (index === 0) value = "합계";
-                  if (col === "불량수량") value = `${totals.불량수량.toLocaleString()}장`;
-                  if (col === "수선수량") value = `${totals.수선수량.toLocaleString()}장`;
+                  if (col === "불량건") value = `${totals.불량건.toLocaleString()}장`;
+                  if (col === "수선완료") value = `${totals.수선완료.toLocaleString()}장`;
+                  if (col === "완전불량") value = `${totals.완전불량.toLocaleString()}장`;
                   if (col === "남은수량") value = `${totals.남은수량.toLocaleString()}장`;
-                  if (col === "수선처리율") {
-                    value =
-                      totals.불량수량 > 0
-                        ? `${Math.round((totals.수선수량 / totals.불량수량) * 1000) / 10}%`
-                        : "0%";
-                  }
+                  if (col === "수선처리율") value = `${Math.round(totalRepairRate * 10) / 10}%`;
+                  if (col === "회수율") value = `${Math.round(totalRecoveryRate * 10) / 10}%`;
 
                   return (
-                    <td key={col} style={{ fontWeight: 900, color: col === "남은수량" ? "#f04b23" : "#0a2747" }}>
+                    <td
+                      key={col}
+                      style={{
+                        fontWeight: 900,
+                        color:
+                          col === "남은수량"
+                            ? "#0057b8"
+                            : col === "완전불량"
+                            ? "#8c6328"
+                            : col === "수선처리율"
+                            ? "#16813a"
+                            : col === "회수율"
+                            ? "#0057b8"
+                            : "#0a2747",
+                      }}
+                    >
                       {value}
                     </td>
                   );
