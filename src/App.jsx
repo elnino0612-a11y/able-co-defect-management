@@ -2310,9 +2310,9 @@ function RepairPage({
       <div className="dashboard-grid">
         <RepairSummaryTable
           title="공장별 요약"
-          rows={summary.factorySummary || []}
-          columns={["실제공장", "불량건", "수선완료", "완전불량", "남은수량", "수선처리율", "회수율"]}
-        />
+            rows={summary.factorySummary || []}
+           columns={["실제공장", "불량건", "수선완료", "수선처리율", "완전불량", "남은수량", "회수율"]}
+          />
         <RepairSummaryTable
           title="품목별 요약"
           rows={summary.itemSummary || []}
